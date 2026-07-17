@@ -92,14 +92,27 @@ def props():
     sys.exit(f"{CONFIG_DB_NAME} not found in workspace {C.WS_NAME}")
 
 
-def connect():
+def connect(retries=4):
+    """Connect to the config SQL DB. A Fabric SQL Database auto-pauses when idle, so the
+    first connect after a while must resume it — use a long login timeout and retry."""
+    import time
     _id, server, database = props()
     token = C._token("https://database.windows.net/").encode("utf-16-le")
     ts = struct.pack(f"<I{len(token)}s", len(token), token)
     host = server.split(",")[0]
     cs = (f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={host};"
-          f"DATABASE={database};Encrypt=yes")
-    return pyodbc.connect(cs, attrs_before={SQL_COPT_SS_ACCESS_TOKEN: ts})
+          f"DATABASE={database};Encrypt=yes;Connection Timeout=90")
+    last = None
+    for a in range(retries):
+        try:
+            return pyodbc.connect(cs, attrs_before={SQL_COPT_SS_ACCESS_TOKEN: ts}, timeout=90)
+        except pyodbc.Error as e:
+            last = e
+            if any(s in str(e) for s in ("08001", "timeout", "Timeout", "258")):
+                time.sleep(20)
+                continue
+            raise
+    raise last
 
 
 def ensure_schema(cn):
