@@ -1,0 +1,39 @@
+# Gold data model: a sales star schema.
+#   dim_product      (SCD1) — product denormalized with subcategory + category
+#   dim_customer     (SCD2) — customer + person, history-tracked
+#   fact_sales_order (fact) — order lines joined to the current dims
+model:
+  - model_id: 1
+    model_name: sales_star
+    load_group: 1
+    is_active: true
+
+gold_object:
+  - gold_object_id: dim_product
+    model_id: 1
+    gold_type: scd1
+    stage_table: dim_product
+    gold_table: dim_product
+    business_key_columns_json: '["product_id"]'
+    is_active: true
+  - gold_object_id: dim_customer
+    model_id: 1
+    gold_type: scd2
+    stage_table: dim_customer
+    gold_table: dim_customer
+    business_key_columns_json: '["customer_id"]'
+    is_active: true
+  - gold_object_id: fact_sales_order
+    model_id: 1
+    gold_type: fact
+    stage_table: fact_sales_order
+    gold_table: fact_sales_order
+    business_key_columns_json: '["sales_order_id","sales_order_detail_id"]'
+    is_active: true
+
+# Fact depends on both dimensions (built first so fact can look up surrogate keys).
+gold_dependency:
+  - parent_gold_object_id: dim_product
+    child_gold_object_id: fact_sales_order
+  - parent_gold_object_id: dim_customer
+    child_gold_object_id: fact_sales_order

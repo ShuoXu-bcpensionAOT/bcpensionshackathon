@@ -1,0 +1,8 @@
+# Source systems. Server/credentials are supplied at run time (never stored here).
+- source_id: 1
+  source_name: AdventureWorks
+  source_type: SQL
+  database_name: AdventureWorks2025
+  load_group: 1
+  ingestion_mode: custom_jdbc
+  is_active: true

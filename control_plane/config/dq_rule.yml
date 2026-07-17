@@ -1,0 +1,40 @@
+# Data-quality rules evaluated on silver. Failing rows (severity=error) are quarantined.
+# rule_type: not_null | min | max | allowed_values | expression
+- rule_id: customer_pk_not_null
+  object_id: customer
+  column_name: customer_id
+  rule_type: not_null
+  severity: error
+  is_active: true
+
+- rule_id: person_type_allowed
+  object_id: person
+  column_name: person_type
+  rule_type: allowed_values
+  allowed_values_json: '["EM","IN","SP","SC","VC","GC"]'
+  severity: error
+  is_active: true
+
+- rule_id: soh_total_due_nonneg
+  object_id: sales_order_header
+  column_name: total_due
+  rule_type: min
+  min_value: 0
+  severity: error
+  is_active: true
+
+- rule_id: sod_orderqty_positive
+  object_id: sales_order_detail
+  column_name: order_qty
+  rule_type: min
+  min_value: 1
+  severity: warn
+  is_active: true
+
+- rule_id: product_listprice_nonneg
+  object_id: product
+  column_name: list_price
+  rule_type: min
+  min_value: 0
+  severity: warn
+  is_active: true

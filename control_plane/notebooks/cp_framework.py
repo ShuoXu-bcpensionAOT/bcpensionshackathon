@@ -1,0 +1,207 @@
+"""cp_framework — shared helpers for the Fabric control plane (run via %run cp_framework).
+
+Deployed as a Fabric notebook; engine notebooks `%run cp_framework` to import
+these functions/constants into their session. GUID-based OneLake paths only
+(workspace-name paths are unreliable).
+"""
+import json
+import re
+from datetime import datetime, timezone
+
+from pyspark.sql import functions as F
+from delta.tables import DeltaTable
+
+# --- workspace / lakehouse GUIDs (Hackathon-DEV) ---
+WS_ID = "79f30543-1f5c-451f-9ef7-b46b24dc7223"
+LH = {
+    "config": "35cd447c-1572-4726-afd6-54e01062659b",  # metadata
+    "bronze": "f0154c3a-4e5e-4245-8ee9-2c3e565f8ff6",
+    "silver": "d586e0f5-5b37-4eaa-b5a6-62dfdba65765",
+    "gold":   "16b4141e-62ef-4cbc-a424-88e1a0f963bf",
+}
+STAGE_LH, QUAR_LH = LH["gold"], LH["silver"]  # stage_/quarantine_ prefixed tables
+
+CONTROL_COLS = {
+    "_run_id", "_source_system", "_source_table", "_bronze_ingest_ts",
+    "_silver_run_id", "_silver_updated_at", "_row_hash", "_is_current",
+    "_effective_start_ts", "_effective_end_ts", "_gold_run_id", "_gold_updated_at",
+    "_ingested_at",
+}
+
+
+def tpath(lh_key_or_guid, table):
+    guid = LH.get(lh_key_or_guid, lh_key_or_guid)
+    return f"abfss://{WS_ID}@onelake.dfs.fabric.microsoft.com/{guid}/Tables/{table}"
+
+
+def now_ts():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def snake(name):
+    s = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", str(name))
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
+
+
+def delta_exists(path):
+    try:
+        return DeltaTable.isDeltaTable(spark, path)  # noqa: F821
+    except Exception:
+        return False
+
+
+def read_path(path):
+    return spark.read.format("delta").load(path)  # noqa: F821
+
+
+def read_config(table):
+    return read_path(tpath("config", table))
+
+
+def write_path(df, path, mode="overwrite"):
+    w = df.write.format("delta").mode(mode)
+    w = w.option("overwriteSchema", "true") if mode == "overwrite" else w.option("mergeSchema", "true")
+    w.save(path)
+
+
+def business_cols(df):
+    return [c for c in df.columns if c not in CONTROL_COLS and not c.startswith("_")]
+
+
+def row_hash(df, cols=None, out="_row_hash"):
+    cols = cols or business_cols(df)
+    if not cols:
+        return df.withColumn(out, F.sha2(F.lit(""), 256))
+    exprs = [F.coalesce(F.col(c).cast("string"), F.lit("<NULL>")) for c in cols]
+    return df.withColumn(out, F.sha2(F.concat_ws("||", *exprs), 256))
+
+
+# --- JDBC source ---
+def jdbc_read(server, database, user, password, dbtable=None, query=None):
+    url = (f"jdbc:sqlserver://{server}:1433;database={database};"
+           "encrypt=true;trustServerCertificate=true;loginTimeout=30")
+    r = (spark.read.format("jdbc").option("url", url)  # noqa: F821
+         .option("user", user).option("password", password)
+         .option("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver"))
+    if query:
+        r = r.option("query", query)
+    else:
+        r = r.option("dbtable", dbtable)
+    return r.load()
+
+
+# Explicit schemas so all-None columns (e.g. run_completed_at) don't break inference.
+SCHEMAS = {
+    "ingestion_run": "run_id string, run_started_at timestamp, run_completed_at timestamp, status string, details string",
+    "object_load_run": ("run_id string, object_id string, layer string, status string, "
+                        "source_count long, target_count long, quarantine_count long, "
+                        "started_at timestamp, ended_at timestamp, details string"),
+    "watermark_state": "object_id string, watermark_value string, updated_at timestamp",
+    "schema_drift_event": ("event_id string, run_id string, object_id string, column_name string, "
+                          "drift_type string, severity string, details string, detected_at timestamp"),
+    "dq_result": ("run_id string, object_id string, rule_id string, failed_count long, "
+                  "passed_count long, status string, evaluated_at timestamp"),
+    "parity_result": ("run_id string, object_id string, check_scope string, check_name string, "
+                      "source_value string, target_value string, status string, checked_at timestamp"),
+}
+
+
+def files_put(name, text):
+    """Write a text file to the config lakehouse Files area (GUID path)."""
+    p = f"abfss://{WS_ID}@onelake.dfs.fabric.microsoft.com/{LH['config']}/Files/{name}"
+    notebookutils.fs.put(p, text, True)  # noqa: F821
+
+
+# --- audit / control writes (append; first write creates the table) ---
+def append_rows(config_table, rows):
+    if not rows:
+        return
+    rows = [_json_safe(r) for r in rows]
+    schema = SCHEMAS.get(config_table)
+    if schema:
+        # order dict values to the schema's column order
+        cols = [c.strip().split()[0] for c in schema.split(",")]
+        rows = [[r.get(c) for c in cols] for r in rows]
+        df = spark.createDataFrame(rows, schema)  # noqa: F821
+    else:
+        df = spark.createDataFrame(rows)  # noqa: F821
+    write_path(df, tpath("config", config_table), mode="append")
+
+
+def _json_safe(d):
+    return {k: (json.dumps(v) if isinstance(v, (dict, list)) else v) for k, v in d.items()}
+
+
+def start_run(run_id, details=None):
+    append_rows("ingestion_run", [{
+        "run_id": run_id, "run_started_at": now_ts(), "run_completed_at": None,
+        "status": "RUNNING", "details": json.dumps(details or {})}])
+    return run_id
+
+
+def finish_run(run_id, status="SUCCEEDED", details=None):
+    # append-only completion marker (avoids UPDATE for simplicity/idempotence)
+    append_rows("ingestion_run", [{
+        "run_id": run_id, "run_started_at": now_ts(), "run_completed_at": now_ts(),
+        "status": status, "details": json.dumps(details or {})}])
+
+
+def log_object_run(run_id, object_id, layer, status, source_count=None,
+                   target_count=None, quarantine_count=None, details=None):
+    append_rows("object_load_run", [{
+        "run_id": run_id, "object_id": object_id, "layer": layer, "status": status,
+        "source_count": _to_int(source_count), "target_count": _to_int(target_count),
+        "quarantine_count": _to_int(quarantine_count), "started_at": now_ts(),
+        "ended_at": now_ts(), "details": json.dumps(details or {})}])
+
+
+def _to_int(v):
+    return int(v) if v is not None else None
+
+
+def get_watermark(object_id):
+    p = tpath("config", "watermark_state")
+    if not delta_exists(p):
+        return None
+    rows = (read_path(p).where(F.col("object_id") == object_id)
+            .orderBy(F.col("updated_at").desc()).limit(1).collect())
+    return rows[0]["watermark_value"] if rows else None
+
+
+def update_watermark(object_id, value):
+    if value is None:
+        return
+    append_rows("watermark_state", [{
+        "object_id": object_id, "watermark_value": str(value), "updated_at": now_ts()}])
+
+
+# --- merge helper (upsert) ---
+def merge_upsert(target_path, source_df, keys):
+    if not delta_exists(target_path):
+        write_path(source_df, target_path, mode="overwrite")
+        return
+    tgt = DeltaTable.forPath(spark, target_path)  # noqa: F821
+    cond = " AND ".join([f"t.`{k}` = s.`{k}`" for k in keys])
+    (tgt.alias("t").merge(source_df.alias("s"), cond)
+        .whenMatchedUpdateAll().whenNotMatchedInsertAll().execute())
+
+
+# --- DAG ---
+def topo_levels(nodes, edges):
+    remaining, done = set(nodes), set()
+    parents = {n: set() for n in nodes}
+    for p, c in edges:
+        if c in parents and p in remaining:
+            parents[c].add(p)
+    levels = []
+    while remaining:
+        ready = sorted([n for n in remaining if parents[n] <= done])
+        if not ready:
+            raise ValueError(f"cycle in gold DAG: {remaining}")
+        levels.append(ready)
+        done |= set(ready)
+        remaining -= set(ready)
+    return levels
+
+
+print("cp_framework loaded")
