@@ -124,18 +124,25 @@ shells) travel together as one unit:
   `dq_result`, `schema_drift_event`, `source_column`) → Delta in the lakehouse.
   Per-environment, **never promoted**.
 - **Authored config** (`datasource`, `source_object`, `dq_rule`, `model`, `gold_object`,
-  `gold_dependency`) → **the lakehouse tables are the source of truth.** Users edit them
-  directly in Fabric (via a **notebook/Python** — the lakehouse SQL endpoint is read-only;
-  SQL-writable config would need a Warehouse, deferred). Promotion is **table → YAML → table**:
+  `gold_dependency`) → lives in a **Fabric SQL Database (`config_db`)**, because the users
+  are SQL-native and the lakehouse SQL endpoint is read-only. **The SQL tables are the
+  source of truth** — users edit them via **T-SQL** (INSERT/UPDATE/MERGE) with enforced
+  PK/FK constraints. Promotion is **SQL → YAML → SQL**:
 
   ```
-  DEV: edit config tables  ->  cp_export_config (tables -> YAML)  ->  git PR
-  Promote: fabric-cicd (items)  +  cp_config (YAML -> UAT/PROD tables)
+  DEV: edit config tables in config_db (T-SQL)
+       ->  cp_export_config (SQL -> YAML)  ->  git PR
+  Promote: fabric-cicd (items)  +  cp_config (YAML -> UAT/PROD config_db)
   ```
 
-  `cp_export_config.py` is the primary sync (tables → YAML, generated artifact — do not
-  hand-edit). `cp_config.py` applies YAML → tables in the target env. Round-trip verified
-  (table → YAML → table reloads identically). No config UI and no SQL DB for now.
+  - **Engine reads** config from `config_db`'s **OneLake mirror** (Delta) — zero-cred,
+    resolved at runtime (`getToken('pbi')` → find `config_db` GUID → read
+    `abfss://…/{sqldb}/Tables/dbo/{table}`). Spark handles the mirror's `deletionVectors`.
+  - **Local tooling** (`cp_config` / `cp_export_config`) uses **pyodbc + AAD token**
+    (`cp_sqldb.py`); delta-rs can't read the mirror, which is fine.
+  - **Mirror lag** is near-real-time; the bootstrap waits for the mirror after a config
+    load before running.
+  - Round-trip verified (SQL → YAML → SQL) and DEV e2e green reading config from the SQL DB.
 
 ## Open items
 
