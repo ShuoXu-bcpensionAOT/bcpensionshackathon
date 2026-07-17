@@ -26,6 +26,33 @@ by Fabric Data Pipelines and promotable across environments from git.
                           each pipeline logs failures → pipeline_run_log (metadata lakehouse)
 ```
 
+```mermaid
+flowchart LR
+  subgraph SRC[Source systems]
+    S[(SQL Server<br/>AdventureWorks)]
+  end
+  subgraph CFG[config_db · Fabric SQL Database]
+    T[datasource · source_object · dq_rule<br/>model · gold_object · gold_dependency<br/>steps · pbi_dataset]
+  end
+  subgraph ENGINE[Fabric workspace]
+    MAIN[[cp_pl_main<br/>per load group]]
+    PLAN[cp_plan<br/>planner]
+    W[workers:<br/>metadata / bronze / silver / gold]
+  end
+  subgraph LH[Lakehouses]
+    B[(bronze)]
+    SI[(silver)]
+    G[(gold)]
+    M[(metadata<br/>state + logs)]
+  end
+  T -- pyodbc/AAD --> PLAN
+  MAIN --> PLAN --> W
+  S -- JDBC --> B --> SI --> G
+  W --> B & SI & G
+  W -- audit/logs --> M
+  T -. YAML export/promote .-> GIT[(git · config/*.yml)]
+```
+
 **Key principles**
 
 - **Config is data, not code.** Authored config lives in `config_db` (T-SQL editable);
@@ -49,6 +76,17 @@ by Fabric Data Pipelines and promotable across environments from git.
 | `silver`  | Curated, deduped, DQ-passed | same table names; snake_case cols, `_row_hash`, `_silver_*`; plus `quarantine_<target>` for DQ failures |
 | `gold`    | Star schema (business) | `dim_*` / `fact_*`; plus `stage_*` (pre-merge staging) |
 | `metadata`| Runtime state + logs + config mirror | audit/state tables (below); Files hold error tracebacks |
+
+```mermaid
+flowchart LR
+  SRC[(Source table)] -->|extract full / incremental| BR[bronze<br/>raw + control cols]
+  BR -->|snake_case · dedupe by key · row-hash| SV[silver<br/>curated]
+  SV -->|DQ rules| Q{pass?}
+  Q -- fail error rule --> QT[quarantine_&lt;target&gt;]
+  Q -- pass --> SVT[silver table]
+  SVT -->|source-query sq_*| ST[stage_*]
+  ST -->|SCD1 / SCD2 / fact merge| GD[gold<br/>dim_* / fact_*]
+```
 
 ### 2.2 config_db (Fabric SQL Database)
 Holds the **authored config** tables (section 4). Edited with T-SQL. Auto-mirrors to
@@ -83,6 +121,34 @@ it at runtime (`notebookutils.variableLibrary`).
 
 Every pipeline: on a work-activity failure → `cp_log_fail` writes to `pipeline_run_log`,
 then a `Fail` activity re-fails so `cp_pl_main` errors out (fail-fast).
+
+**Orchestration (main → children, sequential, is_active-gated, fail-fast):**
+```mermaid
+flowchart TD
+  P[PlanSteps<br/>cp_plan · steps] --> M{load_metadata<br/>active?}
+  M -- yes --> MI[[cp_pl_metadata]] --> B
+  M -- no --> B{load_bronze active?}
+  B -- yes --> BI[[cp_pl_bronze]] --> S
+  B -- no --> S{load_silver active?}
+  S -- yes --> SI[[cp_pl_silver]] --> G
+  S -- no --> G{load_gold active?}
+  G -- yes --> GI[[cp_pl_gold]] --> R
+  G -- no --> R{refresh_pbi active?}
+  R -- yes --> RI[[cp_pl_pbi]] --> DONE([done])
+  R -- no --> DONE
+  BI -. on fail .-> F[cp_log_fail → pipeline_run_log → Fail]
+  F -.-> X([main fails])
+```
+
+**Planner–worker pattern (inside a child pipeline):**
+```mermaid
+flowchart LR
+  PL[cp_plan<br/>reads config_db via pyodbc] -->|exit JSON list| FE[ForEach item]
+  FE --> W1[worker · object 1]
+  FE --> W2[worker · object 2]
+  FE --> W3[worker · object N]
+  W1 & W2 & W3 --> LG[(lakehouse)]
+```
 
 ---
 
@@ -125,6 +191,22 @@ python control_plane/deploy/cp_config.py            # config/*.yml -> target con
 
 `is_active` is a `BIT` (1/0) on every authored table; only active rows are processed.
 Standard/enumerated values are called out in **bold**.
+
+```mermaid
+erDiagram
+  datasource   ||--o{ source_object    : has
+  source_object ||--o{ dq_rule          : validated_by
+  model        ||--o{ gold_object       : contains
+  gold_object  ||--o{ gold_dependency   : parent_or_child
+  datasource      { int source_id PK }
+  source_object   { string object_id PK  int source_id FK }
+  dq_rule         { string rule_id PK  string object_id FK }
+  model           { int model_id PK }
+  gold_object     { string gold_object_id PK  int model_id FK }
+  gold_dependency { string parent_gold_object_id FK  string child_gold_object_id FK }
+  steps           { int load_group  string step_key }
+  pbi_dataset     { string dataset_id PK }
+```
 
 ### 4.1 `datasource` — source systems
 | Column | Type | Notes / allowed values |
@@ -224,6 +306,17 @@ VALUES ('person_type_allowed','person','person_type','allowed_values','["EM","IN
 
 `gold_runner` topo-sorts these; dimensions before facts, snowflake parents before children.
 
+**Example DAG (`sales_star` model) — the order `gold_runner` derives:**
+```mermaid
+flowchart TD
+  DC[dim_category] --> DSC[dim_subcategory] --> DP[dim_product]
+  DT[dim_territory] --> DCU[dim_customer]
+  DP --> F[fact_sales_order]
+  DCU --> F
+  DT --> F
+  F --> FT[fact_sales_by_territory]
+```
+
 ### 4.7 `steps` — orchestration steps per load group
 | Column | Notes / allowed values |
 |--------|------------------------|
@@ -263,6 +356,28 @@ _effective_end_ts`.
 ---
 
 ## 6. Promotion & environments
+
+**Config authoring & promotion loop (tables are the source of truth):**
+```mermaid
+flowchart LR
+  DEV[DEV config_db<br/>edit via T-SQL] -->|cp_export_config| YML[config/*.yml<br/>git]
+  YML -->|PR / merge| MAIN[(main branch)]
+  MAIN -->|cp_config| UAT[UAT config_db]
+  MAIN -->|cp_config| PROD[PROD config_db]
+```
+
+**Deployment (items) per environment:**
+```mermaid
+flowchart LR
+  GH[git repo] --> CI[Deploy Control Plane<br/>GitHub Action / cp_bootstrap]
+  CI -->|az login SP| WS["workspace &lt;base&gt;-&lt;env&gt;"]
+  CI --> LHK[lakehouses + config_db]
+  CI --> VL[cp_vars]
+  CI --> NB[notebooks]
+  CI --> PL[data pipelines]
+  CI --> CFG[load config-as-code]
+```
+
 
 - Items (notebooks/pipelines/lakehouses/variable library) deploy per environment via the
   bootstrap or CI/CD; naming is `<workspace_base>-<environment>` (e.g. `HackathonShuo-UAT`).
