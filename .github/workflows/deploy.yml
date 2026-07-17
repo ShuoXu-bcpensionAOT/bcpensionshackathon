@@ -9,6 +9,8 @@ name: Deploy Control Plane
 # The SP must be allowed to use Fabric APIs, be workspace admin, have rights on the
 # capacity, and be granted access to the config_db SQL database.
 
+# Manual trigger only. Auto-deploy on push can be re-enabled (uncomment the `push:`
+# block) once the AZURE_CLIENT_ID / AZURE_CLIENT_SECRET service-principal secrets exist.
 on:
   workflow_dispatch:
     inputs:
@@ -17,9 +19,9 @@ on:
         type: choice
         options: [DEV, UAT, PROD]
         default: DEV
-  push:
-    branches: [main]
-    paths: ['control_plane/**']
+  # push:
+  #   branches: [main]
+  #   paths: ['control_plane/**']
 
 jobs:
   deploy:
@@ -27,6 +29,13 @@ jobs:
     env:
       CP_ENV: ${{ github.event.inputs.environment || 'DEV' }}
     steps:
+      - name: Preflight - require service principal secrets
+        run: |
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ] || [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
+            echo "::error::Set repo secrets AZURE_CLIENT_ID and AZURE_CLIENT_SECRET (service principal) before deploying."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
