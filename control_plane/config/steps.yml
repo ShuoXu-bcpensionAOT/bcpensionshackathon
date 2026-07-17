@@ -1,0 +1,27 @@
+# Orchestration steps per load group. The main pipeline runs these 5 in order,
+# skipping inactive ones. refresh_pbi is scaffolded inactive until a dataset exists.
+- load_group: 1
+  step_order: 1
+  step_key: load_metadata
+  child_pipeline: cp_pl_metadata
+  is_active: true
+- load_group: 1
+  step_order: 2
+  step_key: load_bronze
+  child_pipeline: cp_pl_bronze
+  is_active: true
+- load_group: 1
+  step_order: 3
+  step_key: load_silver
+  child_pipeline: cp_pl_silver
+  is_active: true
+- load_group: 1
+  step_order: 4
+  step_key: load_gold
+  child_pipeline: cp_pl_gold
+  is_active: true
+- load_group: 1
+  step_order: 5
+  step_key: refresh_pbi
+  child_pipeline: cp_pl_pbi
+  is_active: false

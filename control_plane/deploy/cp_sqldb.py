@@ -44,6 +44,12 @@ DDL = [
         parent_gold_object_id NVARCHAR(128) REFERENCES dbo.gold_object(gold_object_id),
         child_gold_object_id NVARCHAR(128) REFERENCES dbo.gold_object(gold_object_id),
         PRIMARY KEY(parent_gold_object_id, child_gold_object_id))"""),
+    ("steps", """CREATE TABLE dbo.steps(
+        load_group INT, step_order INT, step_key NVARCHAR(50), child_pipeline NVARCHAR(128),
+        is_active BIT, PRIMARY KEY(load_group, step_key))"""),
+    ("pbi_dataset", """CREATE TABLE dbo.pbi_dataset(
+        dataset_id NVARCHAR(128) PRIMARY KEY, load_group INT, workspace_id NVARCHAR(128),
+        dataset_name NVARCHAR(256), is_active BIT)"""),
 ]
 LOAD_ORDER = [name for name, _ in DDL]
 COLUMNS = {
@@ -58,6 +64,8 @@ COLUMNS = {
     "gold_object": ["gold_object_id", "model_id", "gold_type", "stage_table", "gold_table",
                     "business_key_columns_json", "source_query_notebook", "is_active"],
     "gold_dependency": ["parent_gold_object_id", "child_gold_object_id"],
+    "steps": ["load_group", "step_order", "step_key", "child_pipeline", "is_active"],
+    "pbi_dataset": ["dataset_id", "load_group", "workspace_id", "dataset_name", "is_active"],
 }
 BOOL_COLS = {"is_active"}
 # Deterministic export order (stable git diffs) — the primary key of each table.
@@ -68,6 +76,8 @@ ORDER_BY = {
     "dq_rule": "rule_id",
     "gold_object": "gold_object_id",
     "gold_dependency": "parent_gold_object_id, child_gold_object_id",
+    "steps": "load_group, step_order",
+    "pbi_dataset": "dataset_id",
 }
 
 

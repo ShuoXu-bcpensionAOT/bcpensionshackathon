@@ -55,6 +55,8 @@ def main():
         "gold_object": _fetch(cur, "gold_object"),
         "gold_dependency": _fetch(cur, "gold_dependency"),
     })
+    _dump(C.CONFIG_DIR / "steps.yml", _fetch(cur, "steps"))
+    _dump(C.CONFIG_DIR / "pbi_dataset.yml", _fetch(cur, "pbi_dataset"))
     cn.close()
 
 

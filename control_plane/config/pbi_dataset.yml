@@ -1,0 +1,8 @@
+# Power BI semantic models to refresh per load group (scaffold — none yet).
+# Add rows like:
+# - dataset_id: <guid>
+#   load_group: 1
+#   workspace_id: <guid>
+#   dataset_name: sales_star
+#   is_active: true
+[]

@@ -111,6 +111,41 @@ def read_config(table):
     return df
 
 
+# --- config SQL DB direct access (pyodbc + AAD) — used by planners/workers ---
+def _config_props():
+    import requests
+    tk = _fabric_api_token()
+    h = {"Authorization": f"Bearer {tk}"}
+    for d in requests.get(f"https://api.fabric.microsoft.com/v1/workspaces/{WS_ID}/SqlDatabases",
+                          headers=h).json().get("value", []):
+        if d["displayName"] == CONFIG_DB_NAME:
+            p = requests.get(f"https://api.fabric.microsoft.com/v1/workspaces/{WS_ID}/"
+                             f"SqlDatabases/{d['id']}", headers=h).json()["properties"]
+            return p["serverFqdn"].split(",")[0], p["databaseName"]
+    raise Exception(f"{CONFIG_DB_NAME} not found")
+
+
+def config_conn():
+    import pyodbc
+    import struct
+    host, database = _config_props()
+    tok = notebookutils.credentials.getToken("https://database.windows.net/").encode("utf-16-le")
+    ts = struct.pack(f"<I{len(tok)}s", len(tok), tok)
+    return pyodbc.connect(
+        f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={host};DATABASE={database};Encrypt=yes",
+        attrs_before={1256: ts})
+
+
+def config_query(sql, params=()):
+    cn = config_conn()
+    cur = cn.cursor()
+    cur.execute(sql, *params)
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    cn.close()
+    return rows
+
+
 def write_path(df, path, mode="overwrite"):
     w = df.write.format("delta").mode(mode)
     w = w.option("overwriteSchema", "true") if mode == "overwrite" else w.option("mergeSchema", "true")
