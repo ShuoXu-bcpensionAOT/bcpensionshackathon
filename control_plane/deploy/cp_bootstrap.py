@@ -118,12 +118,23 @@ def wait_for_mirror(wid, sqldb_id, tables, timeout=420):
     print("  WARN: config mirror not confirmed within timeout")
 
 
-def ensure_folder(t, wid, name):
+def ensure_folder(t, wid, name, parent=None):
     for f in requests.get(f"{API}/workspaces/{wid}/folders", headers=H(t)).json().get("value", []):
-        if f["displayName"] == name:
+        if f["displayName"] == name and f.get("parentFolderId") == parent:
             return f["id"]
-    return requests.post(f"{API}/workspaces/{wid}/folders", headers=H(t),
-                         json={"displayName": name}).json()["id"]
+    body = {"displayName": name}
+    if parent:
+        body["parentFolderId"] = parent
+    return requests.post(f"{API}/workspaces/{wid}/folders", headers=H(t), json=body).json()["id"]
+
+
+def _move(t, wid, item_id, folder_id):
+    for a in range(6):
+        r = requests.post(f"{API}/workspaces/{wid}/items/{item_id}/move",
+                          headers=H(t), json={"targetFolderId": folder_id})
+        if r.status_code != 429:
+            return
+        time.sleep(int(r.headers.get("Retry-After", 8)) + 2 * a)
 
 
 def move_pipelines(t, wid):
@@ -131,13 +142,34 @@ def move_pipelines(t, wid):
     items = [i for i in requests.get(f"{API}/workspaces/{wid}/items", headers=H(t)).json()["value"]
              if i["type"] == "DataPipeline"]
     for i in items:
-        for a in range(6):
-            r = requests.post(f"{API}/workspaces/{wid}/items/{i['id']}/move",
-                              headers=H(t), json={"targetFolderId": fid})
-            if r.status_code != 429:
-                break
-            time.sleep(int(r.headers.get("Retry-After", 8)) + 2 * a)
+        _move(t, wid, i["id"], fid)
     print(f"  moved {len(items)} pipeline(s) into 'pipeline' folder")
+
+
+# notebook -> subfolder placement (keeps deploys tidy across environments)
+NB_FOLDERS = {
+    "utility": ["cp_framework", "cp_plan", "cp_log_fail"],
+    "sourcequery": ["sq_dim_category", "sq_dim_subcategory", "sq_dim_product", "sq_dim_territory",
+                    "sq_dim_customer", "sq_fact_sales_order", "sq_fact_sales_by_territory"],
+    "notebook": ["metadata_worker", "bronze_worker", "silver_worker", "gold_runner"],
+}
+
+
+def organize_notebooks(t, wid):
+    nbf = ensure_folder(t, wid, "notebook")
+    fmap = {"notebook": nbf,
+            "utility": ensure_folder(t, wid, "utility", nbf),
+            "sourcequery": ensure_folder(t, wid, "sourcequery", nbf)}
+    items = {i["displayName"]: i["id"] for i in
+             requests.get(f"{API}/workspaces/{wid}/items", headers=H(t)).json()["value"]
+             if i["type"] == "Notebook"}
+    n = 0
+    for folder, names in NB_FOLDERS.items():
+        for name in names:
+            if name in items:
+                _move(t, wid, items[name], fmap[folder])
+                n += 1
+    print(f"  organized {n} notebook(s) into notebook/utility/sourcequery")
 
 
 def step(envset, *args):
@@ -162,6 +194,7 @@ def main():
     envset = {"CP_TARGET_WORKSPACE": name, "CP_TARGET_WORKSPACE_ID": wid}
     step(envset, "cp_varlib.py")                       # variable library
     step(envset, "cp_deploy.py", "deploy")             # framework + worker notebooks
+    organize_notebooks(t, wid)                         # -> notebook/utility/sourcequery
     step(envset, "cp_pipeline.py")                     # main + child data pipelines
     move_pipelines(t, wid)                             # -> 'pipeline' folder
     step(envset, "cp_config.py")                       # config-as-code -> config SQL DB
