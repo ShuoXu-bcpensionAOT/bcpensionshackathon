@@ -109,6 +109,34 @@ or Delta. **Key Vault is the agreed target** once a subscription is available
 (`notebookutils.credentials.getSecret(kvUri, secret)` works from Spark). The
 `source_connection` variable + `cp_connection.py` are retained for that future work.
 
+## ALM model — items vs data (decided)
+
+The meaningful boundary is **Fabric items vs data**, not "infra code vs content code".
+
+**Items** (engine notebooks, `sq_*` source-query notebooks, `cp_vars` var-lib, lakehouse
+shells) travel together as one unit:
+- **Authoring:** DEV workspace **git-integrated** to the repo (feature branch → PR → main).
+- **Promotion:** **fabric-cicd** deploys `main` → UAT → PROD; per-env values come from the
+  var-lib **value sets**. (Our `cp_bootstrap`/API tooling remains for initial provisioning.)
+
+**Data** takes its own route, in two classes:
+- **Runtime state / logs** (`watermark_state`, `object_load_run`, `ingestion_run`,
+  `dq_result`, `schema_drift_event`, `source_column`) → Delta in the lakehouse.
+  Per-environment, **never promoted**.
+- **Authored config** (`datasource`, `source_object`, `dq_rule`, `model`, `gold_object`,
+  `gold_dependency`) → **the lakehouse tables are the source of truth.** Users edit them
+  directly in Fabric (via a **notebook/Python** — the lakehouse SQL endpoint is read-only;
+  SQL-writable config would need a Warehouse, deferred). Promotion is **table → YAML → table**:
+
+  ```
+  DEV: edit config tables  ->  cp_export_config (tables -> YAML)  ->  git PR
+  Promote: fabric-cicd (items)  +  cp_config (YAML -> UAT/PROD tables)
+  ```
+
+  `cp_export_config.py` is the primary sync (tables → YAML, generated artifact — do not
+  hand-edit). `cp_config.py` applies YAML → tables in the target env. Round-trip verified
+  (table → YAML → table reloads identically). No config UI and no SQL DB for now.
+
 ## Open items
 
 - Variable Library create/update + value-set switch via REST/SP (for CICD).
