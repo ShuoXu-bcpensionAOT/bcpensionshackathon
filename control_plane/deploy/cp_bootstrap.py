@@ -146,6 +146,21 @@ def move_pipelines(t, wid):
     print(f"  moved {len(items)} pipeline(s) into 'pipeline' folder")
 
 
+# Superseded by the pipeline orchestration — removed from every environment on deploy.
+SUPERSEDED_NOTEBOOKS = ["cp_01_setup", "cp_02_ingest_bronze", "cp_03_build_silver",
+                        "cp_04_build_gold", "cp_09_orchestrate"]
+
+
+def remove_superseded(t, wid):
+    items = {i["displayName"]: i for i in
+             requests.get(f"{API}/workspaces/{wid}/items", headers=H(t)).json()["value"]}
+    for n in SUPERSEDED_NOTEBOOKS:
+        if n in items and items[n]["type"] == "Notebook":
+            requests.delete(f"{API}/workspaces/{wid}/items/{items[n]['id']}",
+                            headers={"Authorization": f"Bearer {t}"})
+            print(f"  removed superseded notebook: {n}")
+
+
 # notebook -> subfolder placement (keeps deploys tidy across environments)
 NB_FOLDERS = {
     "utility": ["cp_framework", "cp_plan", "cp_log_fail"],
@@ -194,6 +209,7 @@ def main():
     envset = {"CP_TARGET_WORKSPACE": name, "CP_TARGET_WORKSPACE_ID": wid}
     step(envset, "cp_varlib.py")                       # variable library
     step(envset, "cp_deploy.py", "deploy")             # framework + worker notebooks
+    remove_superseded(t, wid)                          # prune old orchestrator notebooks
     organize_notebooks(t, wid)                         # -> notebook/utility/sourcequery
     step(envset, "cp_pipeline.py")                     # main + child data pipelines
     move_pipelines(t, wid)                             # -> 'pipeline' folder
