@@ -1,11 +1,14 @@
 # PARAMETERS
 run_id = "manual"
-src_server = ""
 src_user = ""
 src_password = ""
 
 # COMMAND ----------
 %run cp_framework
+
+# COMMAND ----------
+# Source server comes from the cp_vars Variable Library (per-environment), not a param.
+src_server = SOURCE_SERVER
 
 # COMMAND ----------
 # Ingest active source objects into bronze. full -> overwrite; incremental -> append

@@ -13,10 +13,27 @@ from pyspark.sql import functions as F
 from delta.tables import DeltaTable
 
 # --- runtime self-configuration: NO hardcoded IDs ---
-# Workspace id comes from the running context; lakehouse ids are resolved by name
-# from this workspace. LAYER_NAMES maps logical layer -> physical lakehouse name
-# (Phase 2 sources these from the Variable Library; defaults are the conventional names).
-LAYER_NAMES = {"config": "metadata", "bronze": "bronze", "silver": "silver", "gold": "gold"}
+# Workspace id from the running context; environment config (lakehouse names,
+# source server) from the cp_vars Variable Library (the active value set is
+# swapped per environment by CICD); lakehouse ids resolved by name.
+try:
+    _VL = notebookutils.variableLibrary.getLibrary("cp_vars")
+except Exception:
+    _VL = None
+
+
+def var(name, default=None):
+    return getattr(_VL, name, default) if _VL is not None else default
+
+
+LAYER_NAMES = {
+    "config": var("config_lakehouse", "metadata"),
+    "bronze": var("bronze_lakehouse", "bronze"),
+    "silver": var("silver_lakehouse", "silver"),
+    "gold":   var("gold_lakehouse", "gold"),
+}
+SOURCE_SERVER = var("source_server", None)
+SOURCE_CONNECTION = var("source_connection", "")
 
 WS_ID = notebookutils.runtime.context["currentWorkspaceId"]
 _lh_by_name = {l["displayName"]: l["id"] for l in notebookutils.lakehouse.list()}

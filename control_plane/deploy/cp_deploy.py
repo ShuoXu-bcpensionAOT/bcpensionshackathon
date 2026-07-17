@@ -12,8 +12,8 @@ import cp_common as C
 
 
 def _with_source_creds(params):
-    """Inject source DB creds from .env for engine notebooks (avoids CLI secrets)."""
-    params.setdefault("src_server", os.getenv("SOURCE_DB", ""))
+    """Inject source DB user/password from .env (server now comes from cp_vars var lib;
+    Phase 3 moves creds into a Fabric Connection)."""
     params.setdefault("src_user", os.getenv("USERNAME", ""))
     params.setdefault("src_password", os.getenv("PASSWORD", ""))
     return params
@@ -46,7 +46,7 @@ def deploy(names):
 def run(name, params):
     tok = FN.token()
     print(f"running {name} params={ {k: ('***' if 'pass' in k else v) for k, v in params.items()} }")
-    st, info = FN.run_notebook(tok, name, params or None, timeout=1800)
+    st, info = FN.run_notebook(tok, name, params or None, timeout=3600)
     print("status:", st)
     if st != "Completed":
         import json

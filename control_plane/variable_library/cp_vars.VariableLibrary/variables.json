@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/variables/1.0.0/schema.json",
+  "variables": [
+    { "name": "config_lakehouse", "type": "String", "value": "metadata", "note": "logical config layer -> physical lakehouse name" },
+    { "name": "bronze_lakehouse", "type": "String", "value": "bronze" },
+    { "name": "silver_lakehouse", "type": "String", "value": "silver" },
+    { "name": "gold_lakehouse", "type": "String", "value": "gold" },
+    { "name": "source_server", "type": "String", "value": "20.63.101.180", "note": "source SQL Server host" },
+    { "name": "source_connection", "type": "String", "value": "", "note": "Fabric Connection name for source creds (Phase 3)" }
+  ]
+}
