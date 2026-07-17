@@ -8,17 +8,19 @@ import json
 import re
 from datetime import datetime, timezone
 
+import notebookutils
 from pyspark.sql import functions as F
 from delta.tables import DeltaTable
 
-# --- workspace / lakehouse GUIDs (Hackathon-DEV) ---
-WS_ID = "79f30543-1f5c-451f-9ef7-b46b24dc7223"
-LH = {
-    "config": "35cd447c-1572-4726-afd6-54e01062659b",  # metadata
-    "bronze": "f0154c3a-4e5e-4245-8ee9-2c3e565f8ff6",
-    "silver": "d586e0f5-5b37-4eaa-b5a6-62dfdba65765",
-    "gold":   "16b4141e-62ef-4cbc-a424-88e1a0f963bf",
-}
+# --- runtime self-configuration: NO hardcoded IDs ---
+# Workspace id comes from the running context; lakehouse ids are resolved by name
+# from this workspace. LAYER_NAMES maps logical layer -> physical lakehouse name
+# (Phase 2 sources these from the Variable Library; defaults are the conventional names).
+LAYER_NAMES = {"config": "metadata", "bronze": "bronze", "silver": "silver", "gold": "gold"}
+
+WS_ID = notebookutils.runtime.context["currentWorkspaceId"]
+_lh_by_name = {l["displayName"]: l["id"] for l in notebookutils.lakehouse.list()}
+LH = {logical: _lh_by_name[name] for logical, name in LAYER_NAMES.items()}
 STAGE_LH, QUAR_LH = LH["gold"], LH["silver"]  # stage_/quarantine_ prefixed tables
 
 CONTROL_COLS = {
