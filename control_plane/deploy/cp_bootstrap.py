@@ -26,10 +26,10 @@ SCRIPTS = Path(__file__).resolve().parent
 LAKEHOUSES = ["metadata", "bronze", "silver", "gold"]
 
 
-def token():
+def token(resource="https://api.fabric.microsoft.com"):
     return subprocess.run(
         ["az", "account", "get-access-token", "--tenant", TENANT, "--resource",
-         "https://api.fabric.microsoft.com", "--query", "accessToken", "-o", "tsv"],
+         resource, "--query", "accessToken", "-o", "tsv"],
         capture_output=True, text=True, shell=True).stdout.strip()
 
 
@@ -83,6 +83,41 @@ def ensure_lakehouses(t, wid):
         print(f"  created lakehouse {n}")
 
 
+def ensure_sqldb(t, wid, name="config_db"):
+    h = H(t)
+    for d in requests.get(f"{API}/workspaces/{wid}/SqlDatabases", headers=h).json().get("value", []):
+        if d["displayName"] == name:
+            print(f"  sqldb {name} exists")
+            return d["id"]
+    r = requests.post(f"{API}/workspaces/{wid}/items", headers=h,
+                      json={"displayName": name, "type": "SQLDatabase",
+                            "creationPayload": {"creationMode": "new"}})
+    wait_lro(r, t)
+    for _ in range(20):
+        for d in requests.get(f"{API}/workspaces/{wid}/SqlDatabases", headers=h).json().get("value", []):
+            if d["displayName"] == name:
+                print(f"  created sqldb {name}")
+                return d["id"]
+        time.sleep(15)
+    sys.exit("sqldb not found after create")
+
+
+def wait_for_mirror(wid, sqldb_id, tables, timeout=420):
+    """Poll the SQL DB's OneLake mirror until the config tables have replicated."""
+    stok = token("https://storage.azure.com")
+    h = {"Authorization": f"Bearer {stok}"}
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if all(requests.get(
+                f"https://onelake.dfs.fabric.microsoft.com/{wid}/{sqldb_id}/Tables/dbo/{t}"
+                f"/_delta_log/00000000000000000000.json", headers=h).status_code == 200
+               for t in tables):
+            print("  config mirror ready")
+            return
+        time.sleep(15)
+    print("  WARN: config mirror not confirmed within timeout")
+
+
 def step(envset, *args):
     e = dict(os.environ)
     e.update(envset)
@@ -99,12 +134,14 @@ def main():
     t = token()
     wid = ensure_workspace(t, name)
     ensure_lakehouses(t, wid)
+    sqldb_id = ensure_sqldb(t, wid)
     time.sleep(10)  # let OneLake endpoints settle
 
     envset = {"CP_TARGET_WORKSPACE": name, "CP_TARGET_WORKSPACE_ID": wid}
     step(envset, "cp_varlib.py")
     step(envset, "cp_deploy.py", "deploy")
-    step(envset, "cp_config.py")
+    step(envset, "cp_config.py")                       # YAML -> config SQL DB
+    wait_for_mirror(wid, sqldb_id, ["datasource", "gold_dependency"])
     step(envset, "cp_deploy.py", "run", "cp_09_orchestrate", f"run_id={env_name.lower()}_e2e")
     print(f"\nBOOTSTRAP COMPLETE: {name} ({wid})")
 

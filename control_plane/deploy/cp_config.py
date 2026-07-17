@@ -1,15 +1,14 @@
-"""Config-as-code loader: control_plane/config/*.yml -> control tables (metadata lakehouse).
+"""Config-as-code loader: control_plane/config/*.yml -> Fabric SQL Database (config_db).
 
-Local step (delta-rs, GUID paths). Git-promotable config; the Fabric engine
-notebooks then read these control tables. Run: python scripts/cp_config.py
+Applies the promotion YAML into the target env's config SQL DB (full replace per
+table, FK-safe order). Used during promotion; in DEV, users edit the tables
+directly and cp_export_config snapshots them back to YAML.
+Run: python scripts/cp_config.py
 """
-
-from datetime import datetime, timezone
-
-import pandas as pd
 import yaml
 
 import cp_common as C
+import cp_sqldb as S
 
 
 def _load(name):
@@ -18,37 +17,33 @@ def _load(name):
 
 
 def main():
-    tok = C.storage_token()
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    datasource = _load("datasource.yml")
-    source_object = _load("source_object.yml")
-    dq_rule = _load("dq_rule.yml")
     gm = _load("gold_model.yml")
-
-    def stamp(rows):
-        for r in rows:
-            r.setdefault("created_at", now)
-            r["updated_at"] = now
-        return rows
-
-    tables = {
-        "datasource": datasource,
-        "source_object": source_object,
-        "dq_rule": dq_rule,
+    data = {
+        "datasource": _load("datasource.yml"),
         "model": gm.get("model", []),
+        "source_object": _load("source_object.yml"),
+        "dq_rule": _load("dq_rule.yml"),
         "gold_object": gm.get("gold_object", []),
         "gold_dependency": gm.get("gold_dependency", []),
     }
-    print("Loading config-as-code -> control tables (metadata lakehouse):")
-    for name, rows in tables.items():
-        df = pd.DataFrame(stamp(rows))
-        # normalize object/bool columns for arrow
-        for c in df.columns:
-            if df[c].dtype == object:
-                df[c] = df[c].astype("string")
-        n = C.write_delta(C.LH["config"], name, df, tok)
-        print(f"  + {name:<16} {n} row(s)")
+
+    cn = S.connect()
+    S.ensure_schema(cn)
+    cur = cn.cursor()
+    # FK-safe full replace: delete children first, insert parents first.
+    for t in reversed(S.LOAD_ORDER):
+        cur.execute(f"DELETE FROM dbo.{t}")
+    print(f"Loading config-as-code -> SQL Database '{S.CONFIG_DB_NAME}' ({C.WS_NAME}):")
+    for t in S.LOAD_ORDER:
+        cols = S.COLUMNS[t]
+        rows = data[t]
+        ph = ",".join(["?"] * len(cols))
+        for r in rows:
+            cur.execute(f"INSERT INTO dbo.{t} ({','.join(cols)}) VALUES ({ph})",
+                        *[r.get(c) for c in cols])
+        print(f"  + {t:<16} {len(rows)} row(s)")
+    cn.commit()
+    cn.close()
 
 
 if __name__ == "__main__":

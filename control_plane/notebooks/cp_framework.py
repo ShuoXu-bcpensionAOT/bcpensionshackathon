@@ -40,6 +40,34 @@ _lh_by_name = {l["displayName"]: l["id"] for l in notebookutils.lakehouse.list()
 LH = {logical: _lh_by_name[name] for logical, name in LAYER_NAMES.items()}
 STAGE_LH, QUAR_LH = LH["gold"], LH["silver"]  # stage_/quarantine_ prefixed tables
 
+# Authored config lives in a Fabric SQL Database (users edit it via T-SQL). The engine
+# reads it from the SQL DB's OneLake mirror (Delta). Runtime state stays in the lakehouse.
+CONFIG_DB_NAME = "config_db"
+
+
+def _fabric_api_token():
+    import requests  # noqa: F401
+    for aud in ("pbi", "https://api.fabric.microsoft.com", "https://analysis.windows.net/powerbi/api"):
+        try:
+            return notebookutils.credentials.getToken(aud)
+        except Exception:
+            continue
+    return None
+
+
+def _resolve_config_sqldb():
+    import requests
+    tk = _fabric_api_token()
+    r = requests.get(f"https://api.fabric.microsoft.com/v1/workspaces/{WS_ID}/items?type=SQLDatabase",
+                     headers={"Authorization": f"Bearer {tk}"})
+    for i in r.json().get("value", []):
+        if i["displayName"] == CONFIG_DB_NAME:
+            return i["id"]
+    raise Exception(f"{CONFIG_DB_NAME} SQL Database not found in workspace {WS_ID}")
+
+
+CONFIG_SQLDB_ID = _resolve_config_sqldb()
+
 CONTROL_COLS = {
     "_run_id", "_source_system", "_source_table", "_bronze_ingest_ts",
     "_silver_run_id", "_silver_updated_at", "_row_hash", "_is_current",
@@ -74,7 +102,13 @@ def read_path(path):
 
 
 def read_config(table):
-    return read_path(tpath("config", table))
+    """Read an authored-config table from the config SQL DB's OneLake mirror.
+    BIT columns mirror as boolean; normalize is_active so filters are robust."""
+    df = read_path(f"abfss://{WS_ID}@onelake.dfs.fabric.microsoft.com/"
+                   f"{CONFIG_SQLDB_ID}/Tables/dbo/{table}")
+    if "is_active" in df.columns:
+        df = df.withColumn("is_active", F.col("is_active").cast("boolean"))
+    return df
 
 
 def write_path(df, path, mode="overwrite"):
