@@ -72,15 +72,33 @@ Inputs: **SP id+secret, tenant, `workspaceName`, `environmentName`**.
 |-------|-------|------|---------------|
 | **1. De-hardcode framework** | WS_ID from context, LH from name resolution; drop GUID dict | low | re-run e2e in current workspace, unchanged results |
 | **2. Variable Library** | create `cp_vars`; move source server/db + layer names there; framework/notebooks read it | med | e2e reads config from var lib |
-| **3. Fabric Connection** | source creds → managed Connection; remove `.env` password path | med | bronze ingest with no secret param |
+| **3. Secrets** | ~~Fabric Connection~~ **PARKED** | — | see note below |
 | **4. SP bootstrap + fabric-cicd** | promotion script; find-or-create workspace/lakehouses/connection; deploy; populate var lib; load config | high | promote to a fresh `HackathonShuo-TEST` and run e2e green |
 
 Each phase is independently shippable. Phase 1 removes every GUID from the code and
 is the biggest immediate win.
 
-## Open items to spike during implementation
+## Phase 3 finding — secrets (PARKED)
 
-- Exact Spark-JDBC read using a Fabric Connection (credential retrieval path).
+Empirically confirmed (2026-07-17):
+- A Fabric **Connection** was created + test-connected, but a **Spark notebook cannot
+  extract its Basic password** — `notebookutils.credentials.getSecretWithConnection`
+  and `connections.getCredential` fail with *"Artifact Connection does not exist"*
+  (the connection must be bound to the notebook artifact, which isn't exposed via a
+  public API; Fabric guards connection creds from user code).
+- **Key Vault** (the clean alternative) needs an Azure subscription; the `pensionsbc`
+  tenant currently has none.
+
+**Decision: park it.** Current secret handling = **runtime injection**: the source
+password is passed as a notebook run-time parameter (from `.env` locally, from a
+CI secret store in automation). Nothing secret lives in the repo, Variable Library,
+or Delta. **Key Vault is the agreed target** once a subscription is available
+(`notebookutils.credentials.getSecret(kvUri, secret)` works from Spark). The
+`source_connection` variable + `cp_connection.py` are retained for that future work.
+
+## Open items
+
 - Variable Library create/update + value-set switch via REST/SP (for CICD).
-- fabric-cicd support for Variable Library + Connection items (may need our
-  bootstrap to handle those two out-of-band).
+- fabric-cicd support for Variable Library items (else bootstrap handles it — as
+  `cp_varlib.py` already does).
+- Key Vault wiring (deferred until an Azure subscription is attached).
