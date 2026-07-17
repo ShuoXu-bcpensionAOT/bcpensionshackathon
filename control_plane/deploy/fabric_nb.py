@@ -17,8 +17,9 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
-WS = os.getenv("FABRIC_WORKSPACE_ID")
-WS_NAME = os.getenv("FABRIC_WORKSPACE_NAME", "Hackathon-DEV")
+# CP_TARGET_WORKSPACE_ID lets the bootstrap point deploy/run at another workspace (e.g. UAT).
+WS = os.getenv("CP_TARGET_WORKSPACE_ID") or os.getenv("FABRIC_WORKSPACE_ID")
+WS_NAME = os.getenv("CP_TARGET_WORKSPACE") or os.getenv("FABRIC_WORKSPACE_NAME", "HackathonShuo-DEV")
 TENANT = os.getenv("AZURE_TENANT_ID")
 API = "https://api.fabric.microsoft.com/v1"
 

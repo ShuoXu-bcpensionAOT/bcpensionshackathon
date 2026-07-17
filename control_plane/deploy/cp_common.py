@@ -17,7 +17,8 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 TENANT = os.getenv("AZURE_TENANT_ID")
-WS_NAME = os.getenv("FABRIC_WORKSPACE_NAME", "HackathonShuo-DEV")
+# CP_TARGET_WORKSPACE lets the bootstrap point all tooling at another workspace (e.g. UAT).
+WS_NAME = os.getenv("CP_TARGET_WORKSPACE") or os.getenv("FABRIC_WORKSPACE_NAME", "HackathonShuo-DEV")
 FABRIC_API = "https://api.fabric.microsoft.com/v1"
 
 # logical layer -> physical lakehouse name

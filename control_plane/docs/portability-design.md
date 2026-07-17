@@ -73,10 +73,23 @@ Inputs: **SP id+secret, tenant, `workspaceName`, `environmentName`**.
 | **1. De-hardcode framework** | WS_ID from context, LH from name resolution; drop GUID dict | low | re-run e2e in current workspace, unchanged results |
 | **2. Variable Library** | create `cp_vars`; move source server/db + layer names there; framework/notebooks read it | med | e2e reads config from var lib |
 | **3. Secrets** | ~~Fabric Connection~~ **PARKED** | — | see note below |
-| **4. SP bootstrap + fabric-cicd** | promotion script; find-or-create workspace/lakehouses/connection; deploy; populate var lib; load config | high | promote to a fresh `HackathonShuo-TEST` and run e2e green |
+| **4. Bootstrap + promote** ✅ | `cp_bootstrap.py`: find-or-create workspace on trial capacity, create lakehouses, var lib, deploy notebooks, load config, run e2e | high | **DONE — promoted to fresh `HackathonShuo-UAT`, e2e green (9/9/7, DQ pass, gold ordered), zero manual ID edits** |
 
 Each phase is independently shippable. Phase 1 removes every GUID from the code and
 is the biggest immediate win.
+
+## Promotion (validated)
+
+```bash
+az login --tenant <t> --scope https://api.fabric.microsoft.com/.default --allow-no-subscriptions
+python scripts/cp_bootstrap.py HackathonShuo UAT     # or PROD
+```
+Inputs today: personal login + source password from `.env`. To switch to a service
+principal, log in as the SP (same `az`/token path) — no code change. `cp_bootstrap.py`
+targets any workspace via `CP_TARGET_WORKSPACE` / `CP_TARGET_WORKSPACE_ID`, which the
+tooling honors over `.env`. fabric-cicd can replace the `cp_deploy.py deploy` step for
+notebook deployment when desired; the bootstrap already handles workspace/lakehouse/
+var-lib/config which fabric-cicd does not.
 
 ## Phase 3 finding — secrets (PARKED)
 
