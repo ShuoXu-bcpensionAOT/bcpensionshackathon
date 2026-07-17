@@ -20,8 +20,10 @@ def _with_source_creds(params):
 
 NB_DIR = C.REPO / "control_plane" / "notebooks"
 # deploy order: framework first (others %run it)
-ORDER = ["cp_framework", "cp_01_setup", "cp_02_ingest_bronze",
-         "cp_03_build_silver", "cp_04_build_gold", "cp_09_orchestrate"]
+SQ = ["sq_dim_category", "sq_dim_subcategory", "sq_dim_product", "sq_dim_territory",
+      "sq_dim_customer", "sq_fact_sales_order", "sq_fact_sales_by_territory"]
+ORDER = ["cp_framework", "cp_01_setup", "cp_02_ingest_bronze", "cp_03_build_silver",
+         *SQ, "cp_04_build_gold", "cp_09_orchestrate"]
 
 
 def source_cells(name):

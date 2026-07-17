@@ -77,17 +77,25 @@ def row_hash(df, cols=None, out="_row_hash"):
 
 
 # --- JDBC source ---
-def jdbc_read(server, database, user, password, dbtable=None, query=None):
+def jdbc_read(server, database, user, password, dbtable=None, query=None, tries=4):
+    import time
     url = (f"jdbc:sqlserver://{server}:1433;database={database};"
-           "encrypt=true;trustServerCertificate=true;loginTimeout=30")
+           "encrypt=true;trustServerCertificate=true;loginTimeout=60")
     r = (spark.read.format("jdbc").option("url", url)  # noqa: F821
          .option("user", user).option("password", password)
          .option("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver"))
-    if query:
-        r = r.option("query", query)
-    else:
-        r = r.option("dbtable", dbtable)
-    return r.load()
+    r = r.option("query", query) if query else r.option("dbtable", dbtable)
+    last = None
+    for a in range(tries):
+        try:
+            return r.load()
+        except Exception as e:  # transient connect/timeout -> back off and retry
+            last = e
+            if any(s in str(e).lower() for s in ("connect", "timed out", "tcp/ip", "reset")):
+                time.sleep(15 * (a + 1))
+                continue
+            raise
+    raise last
 
 
 # Explicit schemas so all-None columns (e.g. run_completed_at) don't break inference.
@@ -184,6 +192,55 @@ def merge_upsert(target_path, source_df, keys):
     cond = " AND ".join([f"t.`{k}` = s.`{k}`" for k in keys])
     (tgt.alias("t").merge(source_df.alias("s"), cond)
         .whenMatchedUpdateAll().whenNotMatchedInsertAll().execute())
+
+
+# --- reusable gold writers (called by source-query notebooks) ---
+def gold_write(stage, gold_type, gold_table, keys, run_id):
+    stage = (stage.withColumn("_gold_run_id", F.lit(run_id))
+                  .withColumn("_gold_updated_at", F.current_timestamp()))
+    path = tpath("gold", gold_table)
+    if gold_type in ("scd1", "fact"):
+        merge_upsert(path, stage, keys)
+    elif gold_type == "scd2":
+        _scd2_merge(stage, path, keys)
+    else:
+        write_path(stage, path, "overwrite")
+    return read_path(path).count()
+
+
+def _scd2_merge(stage, path, keys):
+    stage = row_hash(stage)
+    incoming = (stage.withColumn("_effective_start_ts", F.current_timestamp())
+                     .withColumn("_effective_end_ts", F.lit(None).cast("timestamp"))
+                     .withColumn("_is_current", F.lit(True)))
+    if not delta_exists(path):
+        write_path(incoming, path, "overwrite")
+        return
+    tgt = DeltaTable.forPath(spark, path)  # noqa: F821
+    cur = tgt.toDF().where(F.col("_is_current"))
+    keycond = [incoming[k] == cur[k] for k in keys]
+    changed = (incoming.join(cur, keycond, "inner")
+               .where(incoming["_row_hash"] != cur["_row_hash"])
+               .select(*[incoming[k].alias(k) for k in keys]))
+    if changed.count():
+        ec = " AND ".join([f"t.`{k}` = s.`{k}`" for k in keys])
+        (tgt.alias("t").merge(changed.alias("s"), ec)
+            .whenMatchedUpdate(set={"_is_current": F.lit(False),
+                                    "_effective_end_ts": F.current_timestamp()}).execute())
+    cur_keys = tgt.toDF().where(F.col("_is_current")).select(*keys)
+    to_insert = incoming.join(cur_keys, keys, "left_anti")
+    if to_insert.count():
+        write_path(to_insert, path, "append")
+
+
+def build_stage_and_gold(gold_object_id, stage_df, gold_type, stage_table, gold_table, keys, run_id):
+    """Standard source-query epilogue: persist the stage table, then merge into gold + log."""
+    write_path(stage_df, tpath(STAGE_LH, f"stage_{stage_table}"), "overwrite")
+    cnt = gold_write(stage_df, gold_type, gold_table, keys, run_id)
+    log_object_run(run_id, gold_object_id, "gold", "SUCCEEDED", target_count=cnt,
+                   details={"gold_type": gold_type})
+    print(f"gold {gold_table} ({gold_type}): {cnt} rows")
+    return cnt
 
 
 # --- DAG ---

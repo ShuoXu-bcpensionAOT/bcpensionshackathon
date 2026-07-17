@@ -1,7 +1,7 @@
-# Gold data model: a sales star schema.
-#   dim_product      (SCD1) — product denormalized with subcategory + category
-#   dim_customer     (SCD2) — customer + person, history-tracked
-#   fact_sales_order (fact) — order lines joined to the current dims
+# Gold data model: sales star schema built by per-object source-query notebooks.
+# Each gold_object names the notebook that reads silver (+ parent gold tables),
+# populates a stage table, and merges into gold. gold_dependency defines the
+# build order (parent must be built before child).
 model:
   - model_id: 1
     model_name: sales_star
@@ -9,19 +9,45 @@ model:
     is_active: true
 
 gold_object:
+  - gold_object_id: dim_category
+    model_id: 1
+    gold_type: scd1
+    stage_table: dim_category
+    gold_table: dim_category
+    business_key_columns_json: '["category_key"]'
+    source_query_notebook: sq_dim_category
+    is_active: true
+  - gold_object_id: dim_subcategory
+    model_id: 1
+    gold_type: scd1
+    stage_table: dim_subcategory
+    gold_table: dim_subcategory
+    business_key_columns_json: '["subcategory_key"]'
+    source_query_notebook: sq_dim_subcategory
+    is_active: true
   - gold_object_id: dim_product
     model_id: 1
     gold_type: scd1
     stage_table: dim_product
     gold_table: dim_product
-    business_key_columns_json: '["product_id"]'
+    business_key_columns_json: '["product_key"]'
+    source_query_notebook: sq_dim_product
+    is_active: true
+  - gold_object_id: dim_territory
+    model_id: 1
+    gold_type: scd1
+    stage_table: dim_territory
+    gold_table: dim_territory
+    business_key_columns_json: '["territory_key"]'
+    source_query_notebook: sq_dim_territory
     is_active: true
   - gold_object_id: dim_customer
     model_id: 1
     gold_type: scd2
     stage_table: dim_customer
     gold_table: dim_customer
-    business_key_columns_json: '["customer_id"]'
+    business_key_columns_json: '["customer_key"]'
+    source_query_notebook: sq_dim_customer
     is_active: true
   - gold_object_id: fact_sales_order
     model_id: 1
@@ -29,11 +55,35 @@ gold_object:
     stage_table: fact_sales_order
     gold_table: fact_sales_order
     business_key_columns_json: '["sales_order_id","sales_order_detail_id"]'
+    source_query_notebook: sq_fact_sales_order
+    is_active: true
+  - gold_object_id: fact_sales_by_territory
+    model_id: 1
+    gold_type: fact
+    stage_table: fact_sales_by_territory
+    gold_table: fact_sales_by_territory
+    business_key_columns_json: '["territory_key"]'
+    source_query_notebook: sq_fact_sales_by_territory
     is_active: true
 
-# Fact depends on both dimensions (built first so fact can look up surrogate keys).
+# Non-trivial DAG:
+#   L0: dim_category, dim_territory
+#   L1: dim_subcategory (<-category), dim_customer (<-territory)
+#   L2: dim_product (<-subcategory)
+#   L3: fact_sales_order (<-product, customer, territory)
+#   L4: fact_sales_by_territory (<-fact_sales_order)
 gold_dependency:
+  - parent_gold_object_id: dim_category
+    child_gold_object_id: dim_subcategory
+  - parent_gold_object_id: dim_subcategory
+    child_gold_object_id: dim_product
+  - parent_gold_object_id: dim_territory
+    child_gold_object_id: dim_customer
   - parent_gold_object_id: dim_product
     child_gold_object_id: fact_sales_order
   - parent_gold_object_id: dim_customer
     child_gold_object_id: fact_sales_order
+  - parent_gold_object_id: dim_territory
+    child_gold_object_id: fact_sales_order
+  - parent_gold_object_id: fact_sales_order
+    child_gold_object_id: fact_sales_by_territory
