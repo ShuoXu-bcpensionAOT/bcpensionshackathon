@@ -26,6 +26,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # GitHub Environment → per-env approvals (protection rules) + environment-scoped secrets.
+    # Create DEV / UAT / PROD environments in repo Settings; add required reviewers on UAT/PROD.
+    environment: ${{ github.event.inputs.environment || 'DEV' }}
     env:
       CP_ENV: ${{ github.event.inputs.environment || 'DEV' }}
     steps:

@@ -7,11 +7,14 @@ import io
 from pathlib import Path
 
 import requests
+from PIL import Image
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 OUT = Path(__file__).resolve().parent / "WORKING_GUIDE.docx"
+# light theme (dark text on white nodes) for print/Word
+MERMAID_INIT = "%%{init: {'theme':'neutral'}}%%\n"
 
 # --- Mermaid diagram sources (kroki renders these to PNG) ---
 DIAGRAMS = {
@@ -104,9 +107,16 @@ DIAGRAMS = {
 
 def render(mermaid):
     r = requests.post("https://kroki.io/mermaid/png",
-                      json={"diagram_source": mermaid}, timeout=40)
+                      json={"diagram_source": MERMAID_INIT + mermaid}, timeout=40)
     r.raise_for_status()
-    return io.BytesIO(r.content)
+    # flatten any transparency onto solid white so it's readable on any page/theme
+    img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+    bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    flat = Image.alpha_composite(bg, img).convert("RGB")
+    buf = io.BytesIO()
+    flat.save(buf, "PNG")
+    buf.seek(0)
+    return buf
 
 
 def main():

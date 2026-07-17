@@ -1,0 +1,79 @@
+# Azure DevOps — deploy the Fabric control plane to an environment.
+#
+# Point a new Pipeline at this file (control_plane/cicd/azure-pipelines.yml).
+# Auth: an ARM **service connection** (Workload Identity Federation preferred — no stored
+# secret). Runtime secrets (source DB password) come from a **variable group linked to
+# Azure Key Vault**. Per-environment approvals come from DevOps **Environments**.
+#
+# Prereqs (one-time):
+#   - Service connection `fabric-sp` (WIF) whose service principal can use Fabric APIs,
+#     is workspace admin, has capacity rights, and is granted access to config_db.
+#   - Variable group `fabric-control-plane` (optionally linked to Key Vault) with
+#     SOURCE_PASSWORD (only needed if this pipeline also *runs* cp_pl_main).
+#   - DevOps Environments `fabric-dev`, `fabric-uat`, `fabric-prod` (add approvals on uat/prod).
+
+trigger: none                       # manual; or add branches/paths to auto-deploy
+
+parameters:
+  - name: environment
+    displayName: Target environment
+    type: string
+    default: DEV
+    values: [DEV, UAT, PROD]
+
+variables:
+  - group: fabric-control-plane     # KV-linked secrets (optional for deploy-only)
+  - name: azureServiceConnection
+    value: fabric-sp
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: Deploy
+    displayName: Deploy ${{ parameters.environment }}
+    jobs:
+      - deployment: deploy
+        displayName: Deploy control plane
+        environment: fabric-${{ lower(parameters.environment) }}   # approvals live here
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: '3.12'
+
+                - script: |
+                    set -e
+                    sudo curl -sSL -o /etc/apt/trusted.gpg.d/microsoft.asc https://packages.microsoft.com/keys/microsoft.asc
+                    curl -sSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+                    sudo apt-get update
+                    sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+                    pip install -r control_plane/requirements.txt
+                  displayName: Install ODBC Driver 18 + deps
+
+                - script: |
+                    python - <<'PY'
+                    import yaml
+                    p = yaml.safe_load(open("control_plane/environments/${{ lower(parameters.environment) }}.yml"))
+                    for k, v in {"WORKSPACE_BASE": p["workspace_base"], "ENVIRONMENT": p["environment"],
+                                 "AZURE_TENANT_ID": p["tenant_id"], "CP_CAPACITY_ID": p["capacity_id"]}.items():
+                        print(f"##vso[task.setvariable variable={k}]{v}")
+                    PY
+                  displayName: Load environment parameters
+
+                - task: AzureCLI@2
+                  displayName: Deploy solution
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)   # WIF service connection
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      # AzureCLI@2 has already run `az login` via the service connection.
+                      python control_plane/deploy/cp_bootstrap.py "$(WORKSPACE_BASE)" "$(ENVIRONMENT)"
+                  env:
+                    CP_CAPACITY_ID: $(CP_CAPACITY_ID)
+                    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
