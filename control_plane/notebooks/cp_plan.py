@@ -33,9 +33,14 @@ elif plan_type == "datasets":
 else:
     rows = []
 
-# BIT -> bool for clean JSON (pyodbc returns bit as bool already, but be safe)
-for r in rows:
-    if "is_active" in r:
-        r["is_active"] = bool(r["is_active"])
+# steps -> keyed object {step_key: is_active} so the main pipeline's If can select by
+# property name (Fabric expressions can't filter()/item() outside a ForEach).
+if plan_type == "steps":
+    out = {r["step_key"]: bool(r["is_active"]) for r in rows}
+else:
+    for r in rows:
+        if "is_active" in r:
+            r["is_active"] = bool(r["is_active"])
+    out = rows
 print(f"plan {plan_type} lg={lg}: {len(rows)} rows")
-notebookutils.notebook.exit(json.dumps(rows, default=str))
+notebookutils.notebook.exit(json.dumps(out, default=str))

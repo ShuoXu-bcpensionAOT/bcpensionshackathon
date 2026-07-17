@@ -199,8 +199,8 @@ def execpl(name, pipeline_id, params, depends=None):
 
 
 def step_active(step_key):
-    return ("@bool(first(filter(json(activity('PlanSteps').output.result.exitValue),"
-            f"equals(item().step_key,'{step_key}'))).is_active)")
+    # planner returns {step_key: is_active}; select by property name (no filter/item())
+    return f"@bool(json(activity('PlanSteps').output.result.exitValue).{step_key})"
 
 
 def build_main(tok):
