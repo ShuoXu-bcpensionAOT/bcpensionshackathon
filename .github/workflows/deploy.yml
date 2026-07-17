@@ -1,0 +1,64 @@
+name: Deploy Control Plane
+
+# Deploys the Fabric control-plane solution to a target environment:
+#   provisions/updates the workspace, lakehouses, config SQL DB, variable library,
+#   deploys the notebooks + data pipelines, and loads config-as-code.
+# Deploy != run: pipelines are executed by schedule/trigger, not by this workflow.
+#
+# Required repo secrets: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET  (service principal).
+# The SP must be allowed to use Fabric APIs, be workspace admin, have rights on the
+# capacity, and be granted access to the config_db SQL database.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [DEV, UAT, PROD]
+        default: DEV
+  push:
+    branches: [main]
+    paths: ['control_plane/**']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CP_ENV: ${{ github.event.inputs.environment || 'DEV' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ODBC Driver 18 + Python deps
+        run: |
+          sudo curl -sSL -o /etc/apt/trusted.gpg.d/microsoft.asc https://packages.microsoft.com/keys/microsoft.asc
+          curl -sSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+          pip install -r control_plane/requirements.txt
+
+      - name: Load environment parameters
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os, yaml
+          env = os.environ["CP_ENV"].lower()
+          p = yaml.safe_load(open(f"control_plane/environments/{env}.yml"))
+          print("WORKSPACE_BASE=" + str(p["workspace_base"]))
+          print("ENVIRONMENT=" + str(p["environment"]))
+          print("AZURE_TENANT_ID=" + str(p["tenant_id"]))
+          print("CP_CAPACITY_ID=" + str(p["capacity_id"]))
+          PY
+
+      - name: Azure login (service principal)
+        run: |
+          az login --service-principal \
+            -u "${{ secrets.AZURE_CLIENT_ID }}" \
+            -p "${{ secrets.AZURE_CLIENT_SECRET }}" \
+            --tenant "$AZURE_TENANT_ID" --allow-no-subscriptions
+
+      - name: Deploy solution
+        run: python control_plane/deploy/cp_bootstrap.py "$WORKSPACE_BASE" "$ENVIRONMENT"

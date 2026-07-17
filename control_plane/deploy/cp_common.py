@@ -24,7 +24,13 @@ FABRIC_API = "https://api.fabric.microsoft.com/v1"
 # logical layer -> physical lakehouse name
 LAYER_NAMES = {"config": "metadata", "bronze": "bronze", "silver": "silver", "gold": "gold"}
 
-REPO = Path(r"C:\Users\Shuo\OneDrive\文档\bcpensionshackathon")
+# Repo root: auto-detect when running from <repo>/control_plane/deploy/ (CI/checkout),
+# else fall back to CP_REPO env or the local clone.
+_here = Path(__file__).resolve()
+if _here.parents[1].name == "control_plane":
+    REPO = _here.parents[2]
+else:
+    REPO = Path(os.getenv("CP_REPO", r"C:\Users\Shuo\OneDrive\文档\bcpensionshackathon"))
 CONFIG_DIR = REPO / "control_plane" / "config"
 
 

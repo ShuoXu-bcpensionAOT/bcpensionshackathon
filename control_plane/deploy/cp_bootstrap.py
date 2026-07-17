@@ -21,7 +21,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 TENANT = os.getenv("AZURE_TENANT_ID")
 API = "https://api.fabric.microsoft.com/v1"
-TRIAL_CAPACITY = "42092329-66a5-4754-93df-fb5cb58fa305"
+CAPACITY_ID = os.getenv("CP_CAPACITY_ID", "42092329-66a5-4754-93df-fb5cb58fa305")
 SCRIPTS = Path(__file__).resolve().parent
 LAKEHOUSES = ["metadata", "bronze", "silver", "gold"]
 
@@ -63,7 +63,7 @@ def ensure_workspace(t, name):
         sys.exit(f"create workspace failed: {r.text}")
     wid = r.json()["id"]
     a = requests.post(f"{API}/workspaces/{wid}/assignToCapacity", headers=H(t),
-                      json={"capacityId": TRIAL_CAPACITY})
+                      json={"capacityId": CAPACITY_ID})
     wait_lro(a, t)
     print(f"created workspace {name} ({wid}) on trial capacity")
     return wid
@@ -118,6 +118,28 @@ def wait_for_mirror(wid, sqldb_id, tables, timeout=420):
     print("  WARN: config mirror not confirmed within timeout")
 
 
+def ensure_folder(t, wid, name):
+    for f in requests.get(f"{API}/workspaces/{wid}/folders", headers=H(t)).json().get("value", []):
+        if f["displayName"] == name:
+            return f["id"]
+    return requests.post(f"{API}/workspaces/{wid}/folders", headers=H(t),
+                         json={"displayName": name}).json()["id"]
+
+
+def move_pipelines(t, wid):
+    fid = ensure_folder(t, wid, "pipeline")
+    items = [i for i in requests.get(f"{API}/workspaces/{wid}/items", headers=H(t)).json()["value"]
+             if i["type"] == "DataPipeline"]
+    for i in items:
+        for a in range(6):
+            r = requests.post(f"{API}/workspaces/{wid}/items/{i['id']}/move",
+                              headers=H(t), json={"targetFolderId": fid})
+            if r.status_code != 429:
+                break
+            time.sleep(int(r.headers.get("Retry-After", 8)) + 2 * a)
+    print(f"  moved {len(items)} pipeline(s) into 'pipeline' folder")
+
+
 def step(envset, *args):
     e = dict(os.environ)
     e.update(envset)
@@ -138,12 +160,14 @@ def main():
     time.sleep(10)  # let OneLake endpoints settle
 
     envset = {"CP_TARGET_WORKSPACE": name, "CP_TARGET_WORKSPACE_ID": wid}
-    step(envset, "cp_varlib.py")
-    step(envset, "cp_deploy.py", "deploy")
-    step(envset, "cp_config.py")                       # YAML -> config SQL DB
+    step(envset, "cp_varlib.py")                       # variable library
+    step(envset, "cp_deploy.py", "deploy")             # framework + worker notebooks
+    step(envset, "cp_pipeline.py")                     # main + child data pipelines
+    move_pipelines(t, wid)                             # -> 'pipeline' folder
+    step(envset, "cp_config.py")                       # config-as-code -> config SQL DB
     wait_for_mirror(wid, sqldb_id, ["datasource", "gold_dependency"])
-    step(envset, "cp_deploy.py", "run", "cp_09_orchestrate", f"run_id={env_name.lower()}_e2e")
-    print(f"\nBOOTSTRAP COMPLETE: {name} ({wid})")
+    print(f"\nBOOTSTRAP COMPLETE (deploy-only): {name} ({wid})")
+    print("Run the pipeline with: cp_pl_main (load_group, run_id, src_user, src_password)")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+# Deployment parameters for the DEV environment.
+# Secrets (SP client id/secret, source DB password) come from CI secrets, never here.
+workspace_base: HackathonShuo      # target workspace = <base>-<environment>
+environment: DEV
+tenant_id: 490b5e1f-5a00-41ad-bac3-4704c9c4042c
+capacity_id: 42092329-66a5-4754-93df-fb5cb58fa305   # Fabric (trial) capacity
