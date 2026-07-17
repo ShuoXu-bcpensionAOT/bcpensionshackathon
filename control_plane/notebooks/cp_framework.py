@@ -199,6 +199,8 @@ SCHEMAS = {
                   "passed_count long, status string, evaluated_at timestamp"),
     "parity_result": ("run_id string, object_id string, check_scope string, check_name string, "
                       "source_value string, target_value string, status string, checked_at timestamp"),
+    "pipeline_run_log": ("pipeline_name string, run_id string, load_group int, activity string, "
+                         "message string, logged_at timestamp"),
 }
 
 

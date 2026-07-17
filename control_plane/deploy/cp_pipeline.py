@@ -116,6 +116,22 @@ def nbid(tok, name):
     return i
 
 
+def fail_handler(tok, pipeline_name, work_activity):
+    """On <work_activity> failure: log to metadata lakehouse, then re-fail the pipeline
+    (so parents/fail-fast propagate)."""
+    log_act = nb("LogFailure", nbid(tok, "cp_log_fail"), {
+        "pipeline_name": plit(pipeline_name),
+        "run_id": pexpr("@pipeline().parameters.run_id"),
+        "load_group": pexpr("@pipeline().parameters.load_group", "int"),
+        "activity": plit(work_activity),
+        "message": pexpr(f"@string(activity('{work_activity}').error)")},
+        depends=[work_activity], cond="Failed")
+    fail_act = {"name": "FailPipeline", "type": "Fail", "dependsOn": dep(["LogFailure"]),
+                "typeProperties": {"message": f"{pipeline_name} failed - see pipeline_run_log",
+                                   "errorCode": "CP_FAIL"}}
+    return [log_act, fail_act]
+
+
 def build_bronze(tok):
     plan = nbid(tok, "cp_plan")
     worker = nbid(tok, "bronze_worker")
@@ -131,7 +147,7 @@ def build_bronze(tok):
         "src_password": pexpr("@pipeline().parameters.src_password")})
     fe = foreach("ForEachObject", "@json(activity('Plan').output.result.exitValue)",
                  [worker_act], depends=["Plan"])
-    return pipeline(params, [plan_act, fe])
+    return pipeline(params, [plan_act, fe] + fail_handler(tok, "cp_pl_bronze", "ForEachObject"))
 
 
 def build_silver(tok):
@@ -145,7 +161,7 @@ def build_silver(tok):
         "object_json": pexpr("@string(item())")})
     return pipeline(params, [plan_act, foreach(
         "ForEachObject", "@json(activity('Plan').output.result.exitValue)",
-        [worker_act], depends=["Plan"])])
+        [worker_act], depends=["Plan"])] + fail_handler(tok, "cp_pl_silver", "ForEachObject"))
 
 
 def build_gold(tok):
@@ -160,7 +176,7 @@ def build_gold(tok):
     # models are independent; run sequentially to keep the gold DAG stable
     return pipeline(params, [plan_act, foreach(
         "ForEachModel", "@json(activity('Plan').output.result.exitValue)",
-        [worker_act], depends=["Plan"], batch=1)])
+        [worker_act], depends=["Plan"], batch=1)] + fail_handler(tok, "cp_pl_gold", "ForEachModel"))
 
 
 def build_metadata(tok):
@@ -172,7 +188,7 @@ def build_metadata(tok):
         "load_group": pexpr("@pipeline().parameters.load_group", "int"),
         "src_user": pexpr("@pipeline().parameters.src_user"),
         "src_password": pexpr("@pipeline().parameters.src_password")})
-    return pipeline(params, [worker_act])
+    return pipeline(params, [worker_act] + fail_handler(tok, "cp_pl_metadata", "MetadataWorker"))
 
 
 def build_pbi(tok):
@@ -189,7 +205,7 @@ def build_pbi(tok):
                "authentication": {"type": "MSI", "resource": "https://analysis.windows.net/powerbi/api"}}}
     return pipeline(params, [plan_act, foreach(
         "ForEachDataset", "@json(activity('Plan').output.result.exitValue)",
-        [web], depends=["Plan"], batch=1)])
+        [web], depends=["Plan"], batch=1)] + fail_handler(tok, "cp_pl_pbi", "ForEachDataset"))
 
 
 def execpl(name, pipeline_id, params, depends=None):
