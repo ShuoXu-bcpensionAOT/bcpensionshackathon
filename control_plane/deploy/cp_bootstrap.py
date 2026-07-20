@@ -71,6 +71,33 @@ def ensure_workspace(t, name):
     return wid
 
 
+def ensure_sp_admin(t, wid):
+    """Grant the deploy service principal the workspace Admin role (idempotent).
+    Lets a human (or another principal) provision a workspace that the SP will then
+    deploy to / run. No-op when SPN_OBJECT_ID is unset or the SP is already assigned
+    (e.g. it created the workspace itself). Warns rather than fails so provisioning
+    continues even if the caller lacks role-assignment rights."""
+    sp_obj = os.getenv("SPN_OBJECT_ID")
+    if not sp_obj:
+        print("  (SPN_OBJECT_ID unset — skipping SP admin grant)")
+        return
+    existing = requests.get(f"{API}/workspaces/{wid}/roleAssignments", headers=H(t))
+    if existing.status_code == 200:
+        for a in existing.json().get("value", []):
+            if a.get("principal", {}).get("id") == sp_obj:
+                print(f"  SP already {a.get('role')} on workspace")
+                return
+    r = requests.post(f"{API}/workspaces/{wid}/roleAssignments", headers=H(t),
+                      json={"principal": {"id": sp_obj, "type": "ServicePrincipal"},
+                            "role": "Admin"})
+    if r.status_code in (200, 201):
+        print("  granted SP the workspace Admin role")
+    elif r.status_code in (400, 409) and "already" in r.text.lower():
+        print("  SP already has a workspace role")
+    else:
+        print(f"  WARN: could not grant SP admin [{r.status_code}] {r.text[:200]}")
+
+
 def ensure_lakehouses(t, wid):
     existing = {i["displayName"] for i in
                 requests.get(f"{API}/workspaces/{wid}/items", headers=H(t)).json()["value"]
@@ -199,6 +226,7 @@ def main():
 
     t = token()
     wid = ensure_workspace(t, name)
+    ensure_sp_admin(t, wid)                            # grant deploy SP admin (idempotent)
     ensure_lakehouses(t, wid)
     sqldb_id = ensure_sqldb(t, wid, MF.SQL_DATABASE)
     time.sleep(10)  # let OneLake endpoints settle

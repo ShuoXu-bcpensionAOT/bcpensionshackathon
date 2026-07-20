@@ -71,4 +71,8 @@ jobs:
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          # Optional (non-secret): SP object/principal id. When set, a newly
+          # provisioned workspace grants this SP the Admin role. Add as a repo
+          # variable (Settings > Variables). Harmless if unset.
+          SPN_OBJECT_ID: ${{ vars.SPN_OBJECT_ID }}
         run: python control_plane/deploy/cp_bootstrap.py "$WORKSPACE_BASE" "$ENVIRONMENT"
