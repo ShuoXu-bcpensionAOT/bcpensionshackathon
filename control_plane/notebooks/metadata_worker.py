@@ -18,7 +18,7 @@ def work():
     lg = int(load_group)
     start_run(run_id, {"engine": "pipeline", "load_group": lg})
     objs = config_query(
-        "SELECT o.object_id,o.source_schema,o.source_table,d.database_name "
+        "SELECT o.object_id,o.source_schema,o.source_table,d.database_name,d.connector,d.source_type "
         "FROM dbo.source_object o JOIN dbo.datasource d ON o.source_id=d.source_id "
         "WHERE o.is_active=1 AND o.processing_state='ACTIVE' AND d.load_group=? "
         "ORDER BY o.object_id", (lg,))
@@ -27,6 +27,13 @@ def work():
     for o in objs:
         oid, schema, table, database = (o["object_id"], o["source_schema"],
                                         o["source_table"], o["database_name"])
+        # Schema discovery uses SQL Server INFORMATION_SCHEMA; skip connectors without it
+        # (API/file sources define their columns at ingest time).
+        if resolve_connector(o) != "sqlserver":
+            log_object_run(run_id, oid, "metadata", "SKIPPED",
+                           details={"connector": resolve_connector(o)})
+            print(f"metadata {oid}: skip (connector {resolve_connector(o)}, no schema discovery)")
+            continue
         rows = jdbc_read(server, database, src_user, src_password, query=(
             "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
             f"WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME='{table}'")).collect()

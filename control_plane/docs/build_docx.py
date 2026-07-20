@@ -319,6 +319,38 @@ def main():
     table(["Column", "Notes"], [["dataset_id (PK), workspace_id, dataset_name, load_group, is_active",
                                  "REST refresh issued per active row"]])
 
+    h("4.9 Ingestion connectors & adding a source", 2)
+    p("Bronze ingestion is connector-dispatched: each datasource declares a `connector`, and "
+      "bronze_worker calls the matching function from the registry in cp_framework "
+      "(INGEST_CONNECTORS). A connector fetches the raw extract; apply_select shapes the landed "
+      "schema; control columns are added; the row lands in bronze. Silver is source-agnostic, so "
+      "a NEW SOURCE NEEDS ONLY CONFIG — no notebook/pipeline changes. Extend with "
+      "register_ingest_connector(name, fn). Credentials are never stored in config (SQL/ODBC "
+      "user+password are passed at run time).")
+    table(["connector", "Reads", "Status"], [
+        ["sqlserver", "SQL Server via Spark JDBC (complex types pruned; incremental watermark)", "live (AdventureWorks)"],
+        ["oracle / db2 / postgresql / mysql", "that dialect via Spark JDBC", "code-complete — needs the JDBC driver jar in the Fabric Environment"],
+        ["jdbc", "any JDBC via explicit url+driver (connection_json)", "needs the driver jar"],
+        ["odbc", "pyodbc on the driver node (modest volumes)", "code-complete — needs the ODBC driver/DSN"],
+        ["rest_api", "generic REST/JSON (url/method/params/record_path in source_options_json)", "live"],
+        ["statcan_wds", "Statistics Canada WDS full-table download", "live (validated)"],
+    ])
+    p("source_options_json (per object) carries: query (explicit extract SQL); filters "
+      "({column:value} equality filters applied AT INGEST to land a subset); select (SCHEMA "
+      "SELECTION — control which columns land, their order/names/types; forms: [\"a\",\"b\"] | "
+      "[{source,name,type}] | {columns,rename,cast}); REST url/method/record_path; StatCan "
+      "table_id/language/filters.")
+    p("Landed-table naming: when target_name is null the bronze/silver table is derived as "
+      "{source_name}_{source_schema|dbo}_{source_table}[_{suffix}] — e.g. source stats_can, "
+      "schema null->dbo, table labour_force, suffix bc -> stats_can_dbo_labour_force_bc.")
+    p("Worked example — a Statistics Canada subset, CONFIG ONLY: datasource (source_id 2, "
+      "connector statcan_wds, load_group 2) + source_object (table_id 14100287, filters "
+      "GEO=British Columbia / Gender=Total - Gender / Statistics=Estimate / Data type=Seasonally "
+      "adjusted, key [REF_DATE,VECTOR], suffix bc, select a controlled column set with VALUE cast "
+      "to double) + steps for load group 2. The full table is ~5.4M rows; the filters land only "
+      "the 32,724-row BC slice as stats_can_dbo_labour_force_bc. Non-SQL-Server connectors are "
+      "skipped by metadata_worker (no INFORMATION_SCHEMA).")
+
     h("5. Runtime state / log tables (generated — never authored, never promoted)", 1)
     table(["Table", "What it records"], [
         ["ingestion_run", "one row per run start/finish"],

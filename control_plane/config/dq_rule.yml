@@ -35,3 +35,15 @@
   min_value: 0
   severity: error
   is_active: true
+- rule_id: statcan_ref_date_nn
+  object_id: statcan_labour_force
+  column_name: ref_date
+  rule_type: not_null
+  severity: error
+  is_active: true
+- rule_id: statcan_vector_nn
+  object_id: statcan_labour_force
+  column_name: vector
+  rule_type: not_null
+  severity: error
+  is_active: true

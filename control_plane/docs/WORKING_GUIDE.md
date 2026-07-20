@@ -214,25 +214,35 @@ erDiagram
 |--------|------|------------------------|
 | `source_id` | INT PK | unique id |
 | `source_name` | str | display name (stamped into bronze `_source_system`) |
-| `source_type` | str | **`SQL`** (SQL Server / Fabric-reachable JDBC) |
-| `database_name` | str | source database |
+| `source_type` | str | free-text descriptor (e.g. `SQL`, `API`) |
+| `database_name` | str | source database (JDBC/ODBC) |
 | `load_group` | INT | the run unit; `cp_pl_main` runs one load group |
-| `ingestion_mode` | str | **`custom_jdbc`** (framework reads via Spark JDBC) |
+| `ingestion_mode` | str | descriptor (e.g. `custom_jdbc`, `api`) |
 | `is_active` | BIT | |
+| `connector` | str | **which ingest connector to use** — `sqlserver` · `oracle` · `db2` · `postgresql` · `mysql` · `jdbc` · `odbc` · `rest_api` · `statcan_wds` (see §4.9). Falls back to `source_type` if null. |
+| `connection_json` | str(JSON) | connector connection params (host/port/database, or `url`+`driver`, or `odbc` string). **No secrets** — user/password are passed at run time. |
 
 ### 4.2 `source_object` — objects to ingest
 | Column | Type | Notes / allowed values |
 |--------|------|------------------------|
 | `object_id` | str PK | stable logical id (e.g. `customer`) |
 | `source_id` | INT FK→datasource | |
-| `source_schema`, `source_table` | str | source location |
-| `target_name` | str | bronze/silver Delta table name (e.g. `adventureworks_sales_customer`) |
+| `source_schema`, `source_table` | str | source location (schema optional; defaults to `dbo` in the landed name) |
+| `target_name` | str | explicit bronze/silver Delta table name. **Optional** — if null, the name is derived (see naming convention below) |
 | `load_type` | str | **`full`** = overwrite each run · **`incremental`** = append rows past the watermark |
 | `key_columns_json` | str(JSON) | business key(s), source-case JSON array, e.g. `["SalesOrderID","SalesOrderDetailID"]` (used for silver dedupe/upsert; snake_cased internally) |
 | `watermark_column` | str | column used for incremental (e.g. `ModifiedDate`) |
 | `watermark_type` | str | **`datetime`** |
 | `processing_state` | str | **`ACTIVE`** (only ACTIVE objects run) |
 | `is_active` | BIT | |
+| `source_options_json` | str(JSON) | per-object connector options: `query`, `filters`, `select` (schema selection), API `table_id`/`url`/`record_path` (see §4.9) |
+| `suffix` | str | optional tag appended to the derived table name (e.g. `bc`) |
+
+**Landed-table naming.** When `target_name` is null, the bronze/silver table name is derived as
+`{source_name}_{source_schema|dbo}_{source_table}[_{suffix}]`, lowercased/underscored — e.g.
+source `stats_can`, schema null→`dbo`, table `labour_force`, suffix `bc` →
+**`stats_can_dbo_labour_force_bc`**. This namespaces every source's tables consistently (the
+existing AdventureWorks tables set `target_name` explicitly, which still wins).
 
 **Incremental semantics:** first run (no stored watermark) pulls everything and records
 `max(watermark_column)`; later runs pull `WHERE watermark_column > stored` and append.
@@ -367,6 +377,59 @@ flowchart TD
 | Column | Notes |
 |--------|-------|
 | `dataset_id` PK, `workspace_id`, `dataset_name`, `load_group`, `is_active` | REST refresh issued per active row |
+
+### 4.9 Ingestion connectors & adding a source
+
+Bronze ingestion is **connector-dispatched**: each `datasource` declares a `connector`, and
+`bronze_worker` calls the matching function from the registry in `cp_framework`
+(`INGEST_CONNECTORS`). A connector fetches the raw extract; `apply_select` then shapes the
+landed schema; control columns are added; the row lands in bronze. Silver is source-agnostic
+(it just reads the bronze table), so **a new source needs no notebook/pipeline changes — only
+config**. Add your own with `register_ingest_connector(name, fn)`.
+
+| `connector` | Reads | `connection_json` | Status |
+|-------------|-------|-------------------|--------|
+| `sqlserver` | SQL Server via Spark JDBC (complex types pruned; incremental watermark) | `{host,port,database}` or `{url,driver}`; falls back to the `cp_vars` `source_server` | **live** (AdventureWorks) |
+| `oracle` · `db2` · `postgresql` · `mysql` | that dialect via Spark JDBC | `{host,port,database}` (or `{url,driver}`) | code-complete — **needs the JDBC driver jar added to the Fabric Environment** |
+| `jdbc` | any JDBC via explicit url+driver | `{url,driver}` | needs the driver jar |
+| `odbc` | pyodbc on the driver node (modest volumes) | `{odbc:"<conn string with {user}/{password}>"}` | code-complete — **needs the ODBC driver/DSN in the Fabric Environment** |
+| `rest_api` | generic REST/JSON | base `{headers}`; per-object `url`/`method`/`params`/`record_path` in `source_options_json` | live |
+| `statcan_wds` | Statistics Canada WDS full-table download | — (params in `source_options_json`) | **live** (validated) |
+
+**Credentials** are never stored in config — SQL/ODBC user+password are passed at run time
+(`src_user`/`src_password`, from `.env`/CI secret today; a Fabric Connection or Key Vault later).
+
+**`source_options_json`** (per source object) carries:
+- `query` — explicit extract SQL (JDBC/ODBC), overrides schema/table
+- `filters` — `{column: value}` equality filters applied **at ingest** to land a **subset** (see below)
+- `select` — **schema selection**: control exactly which columns land, their order/names/types.
+  Forms: `["colA","colB"]` (projection) · `[{"source":"C","name":"c","type":"double"}]` ·
+  `{"columns":[...],"rename":{src:new},"cast":{col:type}}`. Names are the connector's raw
+  output columns; silver still snake_cases afterward. No `select` → land the full schema.
+- REST: `url`, `method`, `headers`, `params`, `body`, `record_path` (dot-path to the record list).
+- StatCan: `table_id`, `language` (`en`/`fr`), `filters` (on **original** StatCan column names).
+
+**Worked example — load a Statistics Canada subset (config only):**
+```sql
+-- 1) the source system + its connector
+INSERT INTO dbo.datasource (source_id,source_name,source_type,load_group,ingestion_mode,is_active,connector)
+VALUES (2,'stats_can','API',2,'api',1,'statcan_wds');
+
+-- 2) the object: table 14100287 (Labour force), filtered to a BC/Total/Estimate/Seasonally-adjusted
+--    slice, landing a controlled column set with VALUE as double. target_name null -> derived name.
+INSERT INTO dbo.source_object
+  (object_id,source_id,source_schema,source_table,load_type,key_columns_json,is_active,processing_state,suffix,source_options_json)
+VALUES ('statcan_labour_force',2,NULL,'labour_force','full','["REF_DATE","VECTOR"]',1,'ACTIVE','bc',
+ '{"table_id":"14100287","language":"en",
+   "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
+   "select":{"columns":["REF_DATE","GEO","Labour_force_characteristics","Age_group","Gender","Statistics","Data_type","VECTOR","COORDINATE","VALUE","UOM"],
+             "cast":{"VALUE":"double"}}}');
+
+-- 3) steps for the new load group (metadata/bronze/silver on; gold/pbi off), then run cp_pl_main(load_group=2)
+```
+The full table is ~5.4M rows; the `filters` land only the **32,724-row** BC slice as
+`stats_can_dbo_labour_force_bc`. Non-SQL-Server connectors are skipped by `metadata_worker`
+(no `INFORMATION_SCHEMA`); their columns are defined by the connector/`select` at ingest.
 
 ---
 

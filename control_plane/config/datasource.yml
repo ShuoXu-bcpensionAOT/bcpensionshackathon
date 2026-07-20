@@ -8,3 +8,10 @@
   load_group: 1
   ingestion_mode: custom_jdbc
   is_active: true
+- source_id: 2
+  source_name: stats_can
+  source_type: API
+  load_group: 2
+  ingestion_mode: api
+  is_active: true
+  connector: statcan_wds

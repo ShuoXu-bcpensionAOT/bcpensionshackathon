@@ -20,7 +20,8 @@ CONFIG_DB_NAME = "config_db"
 DDL = [
     ("datasource", """CREATE TABLE dbo.datasource(
         source_id INT PRIMARY KEY, source_name NVARCHAR(128), source_type NVARCHAR(50),
-        database_name NVARCHAR(128), load_group INT, ingestion_mode NVARCHAR(50), is_active BIT)"""),
+        database_name NVARCHAR(128), load_group INT, ingestion_mode NVARCHAR(50), is_active BIT,
+        connector NVARCHAR(50), connection_json NVARCHAR(MAX))"""),
     ("model", """CREATE TABLE dbo.model(
         model_id INT PRIMARY KEY, model_name NVARCHAR(128), load_group INT, is_active BIT)"""),
     ("source_object", """CREATE TABLE dbo.source_object(
@@ -28,7 +29,8 @@ DDL = [
         source_id INT REFERENCES dbo.datasource(source_id),
         source_schema NVARCHAR(128), source_table NVARCHAR(128), target_name NVARCHAR(256),
         load_type NVARCHAR(50), key_columns_json NVARCHAR(MAX), watermark_column NVARCHAR(128),
-        watermark_type NVARCHAR(50), is_active BIT, processing_state NVARCHAR(50))"""),
+        watermark_type NVARCHAR(50), is_active BIT, processing_state NVARCHAR(50),
+        source_options_json NVARCHAR(MAX), suffix NVARCHAR(128))"""),
     ("dq_rule", """CREATE TABLE dbo.dq_rule(
         rule_id NVARCHAR(128) PRIMARY KEY,
         object_id NVARCHAR(128) REFERENCES dbo.source_object(object_id),
@@ -59,11 +61,11 @@ DDL = [
 LOAD_ORDER = [name for name, _ in DDL]
 COLUMNS = {
     "datasource": ["source_id", "source_name", "source_type", "database_name",
-                   "load_group", "ingestion_mode", "is_active"],
+                   "load_group", "ingestion_mode", "is_active", "connector", "connection_json"],
     "model": ["model_id", "model_name", "load_group", "is_active"],
     "source_object": ["object_id", "source_id", "source_schema", "source_table", "target_name",
                       "load_type", "key_columns_json", "watermark_column", "watermark_type",
-                      "is_active", "processing_state"],
+                      "is_active", "processing_state", "source_options_json", "suffix"],
     "dq_rule": ["rule_id", "object_id", "column_name", "rule_type", "allowed_values_json",
                 "min_value", "max_value", "rule_expression", "severity", "is_active"],
     "cleanse_rule": ["rule_id", "object_id", "function", "columns", "parameters_json",
@@ -125,9 +127,21 @@ def connect(retries=4):
     raise last
 
 
+# Additive column migrations — applied to config DBs created before these columns existed.
+MIGRATIONS = [
+    ("datasource", "connector", "NVARCHAR(50)"),
+    ("datasource", "connection_json", "NVARCHAR(MAX)"),
+    ("source_object", "source_options_json", "NVARCHAR(MAX)"),
+    ("source_object", "suffix", "NVARCHAR(128)"),
+]
+
+
 def ensure_schema(cn):
     cur = cn.cursor()
     for name, ddl in DDL:
         if not cur.execute(f"SELECT OBJECT_ID('dbo.{name}','U')").fetchval():
             cur.execute(ddl)
+    for tbl, col, coltype in MIGRATIONS:              # add columns to pre-existing tables
+        if not cur.execute(f"SELECT COL_LENGTH('dbo.{tbl}','{col}')").fetchval():
+            cur.execute(f"ALTER TABLE dbo.{tbl} ADD [{col}] {coltype}")
     cn.commit()

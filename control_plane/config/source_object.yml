@@ -100,3 +100,16 @@
   watermark_type: datetime
   is_active: true
   processing_state: ACTIVE
+- object_id: statcan_labour_force
+  source_id: 2
+  source_table: labour_force
+  load_type: full
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: ACTIVE
+  source_options_json: '{"table_id": "14100287", "language": "en", "filters": {"GEO":
+    "British Columbia", "Gender": "Total - Gender", "Statistics": "Estimate", "Data
+    type": "Seasonally adjusted"}, "select": {"columns": ["REF_DATE", "GEO", "Labour_force_characteristics",
+    "Age_group", "Gender", "Statistics", "Data_type", "VECTOR", "COORDINATE", "VALUE",
+    "UOM"], "cast": {"VALUE": "double"}}}'
+  suffix: bc

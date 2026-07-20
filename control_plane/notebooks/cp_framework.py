@@ -90,6 +90,25 @@ def snake(name):
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
 
 
+def _norm_ident(s):
+    """Lowercase, non-alphanumeric -> _, collapse/strip underscores."""
+    return re.sub(r"_+", "_", re.sub(r"[^0-9A-Za-z]+", "_", str(s or "").strip().lower())).strip("_")
+
+
+def landed_table(o):
+    """The landed table name for a source object. Explicit target_name wins (back-compat);
+    otherwise derive the flat namespaced convention
+        {source_name}_{source_schema|dbo}_{source_table}[_{suffix}]
+    e.g. source 'Stats Can', schema null, table 'sales', suffix 'bc' -> stats_can_dbo_sales_bc."""
+    if o.get("target_name"):
+        return o["target_name"]
+    parts = [o.get("source_name"), (o.get("source_schema") or "dbo"), o.get("source_table")]
+    name = "_".join(_norm_ident(p) for p in parts if p)
+    if o.get("suffix"):
+        name = f"{name}_{_norm_ident(o['suffix'])}"
+    return name
+
+
 def delta_exists(path):
     try:
         return DeltaTable.isDeltaTable(spark, path)  # noqa: F821
@@ -255,14 +274,32 @@ def row_hash(df, cols=None, out="_row_hash"):
     return df.withColumn(out, F.sha2(F.concat_ws("||", *exprs), 256))
 
 
-# --- JDBC source ---
-def jdbc_read(server, database, user, password, dbtable=None, query=None, tries=4):
+# --- ingestion connectors (registry-extensible; each datasource declares its connector) ---
+# A connector is a function (object_config: dict, user, password) -> raw Spark DataFrame.
+# object_config carries source_object + datasource fields (see cp_plan), plus the parsed
+# JSON columns connection_json (datasource-level params) and source_options_json (per object).
+COMPLEX_TYPES = {"xml", "geography", "geometry", "hierarchyid", "varbinary", "image", "sql_variant"}
+
+# jdbc dialects: driver class + url template + default port. The SQL Server driver ships with
+# Fabric Spark; Oracle/DB2/Postgres/MySQL need their JDBC jar added to the Fabric Environment.
+JDBC_DIALECTS = {
+    "sqlserver":  {"driver": "com.microsoft.sqlserver.jdbc.SQLServerDriver", "port": 1433,
+                   "url": "jdbc:sqlserver://{host}:{port};database={database};encrypt=true;trustServerCertificate=true;loginTimeout=60"},
+    "oracle":     {"driver": "oracle.jdbc.OracleDriver", "port": 1521,
+                   "url": "jdbc:oracle:thin:@//{host}:{port}/{database}"},
+    "db2":        {"driver": "com.ibm.db2.jcc.DB2Driver", "port": 50000,
+                   "url": "jdbc:db2://{host}:{port}/{database}"},
+    "postgresql": {"driver": "org.postgresql.Driver", "port": 5432,
+                   "url": "jdbc:postgresql://{host}:{port}/{database}"},
+    "mysql":      {"driver": "com.mysql.cj.jdbc.Driver", "port": 3306,
+                   "url": "jdbc:mysql://{host}:{port}/{database}"},
+}
+
+
+def _jdbc_load(url, driver, user, password, dbtable=None, query=None, tries=4):
     import time
-    url = (f"jdbc:sqlserver://{server}:1433;database={database};"
-           "encrypt=true;trustServerCertificate=true;loginTimeout=60")
     r = (spark.read.format("jdbc").option("url", url)  # noqa: F821
-         .option("user", user).option("password", password)
-         .option("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver"))
+         .option("user", user).option("password", password).option("driver", driver))
     r = r.option("query", query) if query else r.option("dbtable", dbtable)
     last = None
     for a in range(tries):
@@ -275,6 +312,194 @@ def jdbc_read(server, database, user, password, dbtable=None, query=None, tries=
                 continue
             raise
     raise last
+
+
+def jdbc_read(server, database, user, password, dbtable=None, query=None, tries=4):
+    """SQL Server JDBC read (back-compat helper used by metadata schema discovery)."""
+    d = JDBC_DIALECTS["sqlserver"]
+    url = d["url"].format(host=server, port=d["port"], database=database)
+    return _jdbc_load(url, d["driver"], user, password, dbtable, query, tries)
+
+
+def _opts(o):
+    return json.loads(o["source_options_json"]) if o.get("source_options_json") else {}
+
+
+def _conn(o):
+    return json.loads(o["connection_json"]) if o.get("connection_json") else {}
+
+
+def _ic_jdbc(o, user, password):
+    """JDBC connector for any dialect. Server/driver from connection_json (or a dialect
+    preset); falls back to the cp_vars source_server for SQL Server (back-compat)."""
+    name = (o.get("connector") or o.get("source_type") or "sqlserver").lower()
+    if name in ("sql", "mssql", "custom_jdbc"):
+        name = "sqlserver"
+    d = JDBC_DIALECTS.get(name)
+    c, opts = _conn(o), _opts(o)
+    driver = c.get("driver") or (d["driver"] if d else None)
+    if c.get("url"):
+        url = c["url"]
+    elif d:
+        url = d["url"].format(host=c.get("host") or SOURCE_SERVER,
+                              port=c.get("port") or d["port"],
+                              database=c.get("database") or o.get("database_name"))
+    else:
+        raise Exception(f"jdbc connector '{name}': set connection_json.url + .driver")
+    if not driver:
+        raise Exception(f"jdbc connector '{name}': no driver class")
+    schema, table, wm_col = o.get("source_schema"), o.get("source_table"), o.get("watermark_column")
+    wm = get_watermark(o["object_id"]) if (o.get("load_type") == "incremental" and wm_col) else None
+    if opts.get("query"):
+        query = opts["query"]
+    elif name == "sqlserver":                          # prune JDBC-unreadable complex-type columns
+        cols = _jdbc_load(url, driver, user, password, query=(
+            "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+            f"WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME='{table}'")).collect()
+        keep = [r["COLUMN_NAME"] for r in cols if r["DATA_TYPE"].lower() not in COMPLEX_TYPES]
+        col_sql = ", ".join(f"[{x}]" for x in keep)
+        pred = f" WHERE [{wm_col}] > '{wm}'" if wm else ""
+        query = f"SELECT {col_sql} FROM [{schema}].[{table}]{pred}"
+    else:
+        tbl = f"{schema}.{table}" if schema else table
+        pred = f" WHERE {wm_col} > '{wm}'" if wm else ""
+        query = f"SELECT * FROM {tbl}{pred}"
+    return _jdbc_load(url, driver, user, password, query=query)
+
+
+def _ic_odbc(o, user, password):
+    """Generic ODBC via pyodbc on the driver node (not distributed — modest volumes).
+    connection_json.odbc = an ODBC connection string ({user}/{password} placeholders
+    substituted at runtime). Needs the platform ODBC driver/DSN in the Fabric Environment."""
+    import pyodbc
+    c, opts = _conn(o), _opts(o)
+    cs = c.get("odbc") or c.get("connection_string")
+    if not cs:
+        raise Exception("odbc connector needs connection_json.odbc (an ODBC connection string)")
+    cs = cs.format(user=user, password=password, **{k: v for k, v in c.items() if k != "odbc"})
+    query = opts.get("query")
+    if not query:
+        schema, table = o.get("source_schema"), o.get("source_table")
+        query = f"SELECT * FROM {schema + '.' if schema else ''}{table}"
+    cn = pyodbc.connect(cs)
+    cur = cn.cursor()
+    cur.execute(query)
+    cols = [dd[0] for dd in cur.description]
+    rows = [tuple(r) for r in cur.fetchall()]
+    cn.close()
+    if not rows:
+        return spark.createDataFrame([], ", ".join(f"`{x}` string" for x in cols))  # noqa: F821
+    return spark.createDataFrame(rows, cols)           # noqa: F821
+
+
+def _ic_rest_api(o, user, password):
+    """Generic REST/JSON connector. source_options_json: url, method, headers, params, body,
+    record_path (dot-path to the list of records). connection_json may hold base headers."""
+    import requests
+    import pandas as pd
+    c, opts = _conn(o), _opts(o)
+    url = opts.get("url") or c.get("base_url")
+    resp = requests.request((opts.get("method") or "GET").upper(), url,
+                            headers={**c.get("headers", {}), **opts.get("headers", {})},
+                            params=opts.get("params"), json=opts.get("body"), timeout=120)
+    resp.raise_for_status()
+    data = resp.json()
+    for key in [k for k in (opts.get("record_path") or "").split(".") if k]:
+        data = data[key]
+    if isinstance(data, dict):
+        data = [data]
+    pdf = pd.json_normalize(data)
+    pdf.columns = [re.sub(r"[^A-Za-z0-9_]", "_", str(x)) for x in pdf.columns]
+    pdf = pdf.where(pd.notnull(pdf), None)
+    return spark.createDataFrame(pdf)                  # noqa: F821
+
+
+def _ic_statcan_wds(o, user, password):
+    """Statistics Canada WDS full-table download (getFullTableDownloadCSV -> zip -> CSV).
+    source_options_json: {table_id, language(en/fr), filters:{<original column>:<value>}}.
+    Equality filters (on ORIGINAL column names) are applied at ingest to land a subset."""
+    import requests
+    import zipfile
+    import io
+    import pandas as pd
+    opts = _opts(o)
+    table_id, lang = str(opts["table_id"]), opts.get("language", "en")
+    meta = requests.get(
+        f"https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/{table_id}/{lang}",
+        timeout=60).json()
+    if str(meta.get("status")).upper() != "SUCCESS":
+        raise Exception(f"StatCan WDS error for table {table_id}: {meta}")
+    zf = zipfile.ZipFile(io.BytesIO(requests.get(meta["object"], timeout=600).content))
+    csv_name = [f for f in zf.namelist() if "_Meta" not in f and f.lower().endswith(".csv")][0]
+    pdf = pd.read_csv(zf.open(csv_name), low_memory=False, dtype=str)
+    for col, val in (opts.get("filters") or {}).items():
+        if col in pdf.columns:
+            pdf = pdf[pdf[col].astype(str).str.strip() == str(val)]
+    pdf.columns = [re.sub(r"[^A-Za-z0-9_]", "_", str(x)) for x in pdf.columns]
+    pdf = pdf.where(pd.notnull(pdf), None)
+    return spark.createDataFrame(pdf)                  # noqa: F821
+
+
+INGEST_CONNECTORS = {
+    "sqlserver": _ic_jdbc, "oracle": _ic_jdbc, "db2": _ic_jdbc,
+    "postgresql": _ic_jdbc, "mysql": _ic_jdbc, "jdbc": _ic_jdbc,
+    "odbc": _ic_odbc, "rest_api": _ic_rest_api, "statcan_wds": _ic_statcan_wds,
+}
+# connectors that support metadata schema discovery (INFORMATION_SCHEMA over JDBC)
+DISCOVERABLE_CONNECTORS = {"sqlserver", "oracle", "db2", "postgresql", "mysql", "jdbc"}
+
+
+def register_ingest_connector(name, fn):
+    """Register a source connector: fn(object_config:dict, user, password) -> Spark DataFrame."""
+    INGEST_CONNECTORS[name] = fn
+
+
+def resolve_connector(o):
+    """The connector key for a source object: explicit `connector`, else `source_type`."""
+    name = (o.get("connector") or o.get("source_type") or "sqlserver").lower()
+    return {"sql": "sqlserver", "mssql": "sqlserver", "custom_jdbc": "sqlserver",
+            "api": "rest_api", "statcan": "statcan_wds"}.get(name, name)
+
+
+def run_connector(o, user, password):
+    """Dispatch to the datasource's connector and return the raw extract DataFrame."""
+    name = resolve_connector(o)
+    fn = INGEST_CONNECTORS.get(name)
+    if not fn:
+        raise Exception(f"no ingest connector registered for '{name}' (object {o.get('object_id')})")
+    return fn(o, user, password)
+
+
+def apply_select(df, spec):
+    """Config-driven schema selection for the landed data (source_options_json.select).
+    Controls exactly which columns land, their order, names and types. Forms:
+      - ["colA","colB"]                              projection (keep, in order)
+      - [{"source":"C","name":"c","type":"double"}]  project + rename + cast
+      - {"columns":[...],"rename":{s:n},"cast":{c:t}} projection + rename + cast
+    `source` names are the connector's raw output column names. No spec -> land full schema."""
+    if not spec:
+        return df
+    if isinstance(spec, dict):
+        sel = spec.get("columns") or df.columns
+        out = df.select(*[F.col(c) for c in sel if c in df.columns])
+        for src, new in (spec.get("rename") or {}).items():
+            if src in out.columns:
+                out = out.withColumnRenamed(src, new)
+        for c, t in (spec.get("cast") or {}).items():
+            if c in out.columns:
+                out = out.withColumn(c, F.col(c).cast(t))
+        return out
+    exprs = []
+    for item in spec:
+        if isinstance(item, str):
+            if item in df.columns:
+                exprs.append(F.col(item))
+        else:
+            src = item.get("source") or item.get("name")
+            if src in df.columns:
+                e = F.col(src).cast(item["type"]) if item.get("type") else F.col(src)
+                exprs.append(e.alias(item.get("name", src)))
+    return df.select(*exprs) if exprs else df
 
 
 # Explicit schemas so all-None columns (e.g. run_completed_at) don't break inference.

@@ -34,7 +34,7 @@ def dq_condition(rule, colmap):
 
 
 def work():
-    oid, target = o["object_id"], o["target_name"]
+    oid, target = o["object_id"], landed_table(o)
     keys = [snake(k) for k in json.loads(o["key_columns_json"])]
     bp = tpath("bronze", target)
     if not delta_exists(bp):

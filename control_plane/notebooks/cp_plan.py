@@ -14,7 +14,8 @@ lg = int(load_group)
 if plan_type == "objects":
     rows = config_query(
         "SELECT o.object_id,o.source_schema,o.source_table,o.target_name,o.load_type,"
-        "o.key_columns_json,o.watermark_column,d.database_name,d.source_name "
+        "o.key_columns_json,o.watermark_column,o.source_options_json,o.suffix,"
+        "d.database_name,d.source_name,d.source_type,d.connector,d.connection_json "
         "FROM dbo.source_object o JOIN dbo.datasource d ON o.source_id=d.source_id "
         "WHERE o.is_active=1 AND o.processing_state='ACTIVE' AND d.load_group=? "
         "ORDER BY o.object_id", (lg,))
