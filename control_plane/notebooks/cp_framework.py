@@ -166,6 +166,27 @@ def config_query(sql, params=()):
     return rows
 
 
+def config_exec(sql, params=()):
+    """Execute a write against config_db (used by object discovery to register source_object)."""
+    cn = config_conn()
+    cur = cn.cursor()
+    cur.execute(sql, *params)
+    cn.commit()
+    cn.close()
+
+
+def config_exec_many(sql, rows):
+    """Batch-insert into config_db on a single connection (one connect per datasource, not per row)."""
+    if not rows:
+        return
+    cn = config_conn()
+    cur = cn.cursor()
+    cur.fast_executemany = True
+    cur.executemany(sql, rows)
+    cn.commit()
+    cn.close()
+
+
 # --- cleansing (transform) functions — applied on silver, config-driven, registry-extensible ---
 def _cf_trim(df, cols, p):
     for c in cols:
@@ -297,6 +318,15 @@ JDBC_DIALECTS = {
 }
 
 
+def _jdbc_driver(c, d):
+    """Resolve the JDBC driver class. Accepts a real class, a dialect name (e.g. 'sqlserver' in a
+    secret), or falls back to the dialect preset."""
+    drv = c.get("driver")
+    if drv in JDBC_DIALECTS:
+        return JDBC_DIALECTS[drv]["driver"]
+    return drv or (d["driver"] if d else None)
+
+
 def _jdbc_load(url, driver, user, password, dbtable=None, query=None, tries=4):
     import time
     r = (spark.read.format("jdbc").option("url", url)  # noqa: F821
@@ -368,7 +398,7 @@ def _ic_jdbc(o, user, password):
     c, opts = _resolve_conn(o), _opts(o)
     user = c.get("user") or user
     password = c.get("password") or password
-    driver = c.get("driver") or (d["driver"] if d else None)
+    driver = _jdbc_driver(c, d)
     if c.get("url") or c.get("connection_string"):
         url = c.get("url") or c.get("connection_string")
     elif d:
@@ -603,6 +633,58 @@ def apply_select(df, spec):
                 e = F.col(src).cast(item["type"]) if item.get("type") else F.col(src)
                 exprs.append(e.alias(item.get("name", src)))
     return df.select(*exprs) if exprs else df
+
+
+# --- object discovery (registry-extensible; metadata step materializes source_object rows) ---
+# A discoverer is fn(datasource_config: dict) -> list of candidate object dicts, each with
+# source_schema, source_table, key_columns_json, source_options_json (any may be None).
+def _discover_sqlserver(ds):
+    """Enumerate every base table in the source database + its primary-key columns."""
+    c = _resolve_conn(ds)
+    d = JDBC_DIALECTS["sqlserver"]
+    url = c.get("url") or c.get("connection_string") or d["url"].format(
+        host=c.get("host") or SOURCE_SERVER, port=c.get("port") or d["port"],
+        database=c.get("database") or ds.get("database_name"))
+    drv, u, p = _jdbc_driver(c, d), c.get("user"), c.get("password")
+    tables = _jdbc_load(url, drv, u, p, query=(
+        "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_TYPE='BASE TABLE'")).collect()
+    pk = _jdbc_load(url, drv, u, p, query=(
+        "SELECT KU.TABLE_SCHEMA t_s, KU.TABLE_NAME t_n, KU.COLUMN_NAME c_n "
+        "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS TC "
+        "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU ON TC.CONSTRAINT_NAME=KU.CONSTRAINT_NAME "
+        "WHERE TC.CONSTRAINT_TYPE='PRIMARY KEY' ORDER BY KU.ORDINAL_POSITION")).collect()
+    keys = {}
+    for r in pk:
+        keys.setdefault((r["t_s"], r["t_n"]), []).append(r["c_n"])
+    return [{"source_schema": t["TABLE_SCHEMA"], "source_table": t["TABLE_NAME"],
+             "key_columns_json": json.dumps(keys.get((t["TABLE_SCHEMA"], t["TABLE_NAME"]), [])),
+             "source_options_json": None} for t in tables]
+
+
+def _discover_statcan(ds):
+    """Materialize one object per table_id declared at the datasource (connection_json.tables)."""
+    out = []
+    for t in _conn(ds).get("tables", []):
+        out.append({"source_schema": None, "source_table": t.get("name") or str(t["table_id"]),
+                    "key_columns_json": json.dumps(["REF_DATE", "VECTOR"]),
+                    "source_options_json": json.dumps({"table_id": str(t["table_id"]),
+                                                       "language": t.get("language", "en")})})
+    return out
+
+
+DISCOVERERS = {"sqlserver": _discover_sqlserver, "statcan_wds": _discover_statcan}
+
+
+def register_discoverer(name, fn):
+    """Register an object discoverer: fn(datasource_config) -> [candidate object dicts]."""
+    DISCOVERERS[name] = fn
+
+
+def discover_objects(ds):
+    """Return candidate objects for a datasource via its registered discoverer (or [])."""
+    fn = DISCOVERERS.get(resolve_connector(ds))
+    return fn(ds) if fn else None
 
 
 # Explicit schemas so all-None columns (e.g. run_completed_at) don't break inference.
