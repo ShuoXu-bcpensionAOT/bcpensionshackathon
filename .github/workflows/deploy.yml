@@ -65,12 +65,10 @@ jobs:
           print("CP_CAPACITY_ID=" + str(p["capacity_id"]))
           PY
 
-      - name: Azure login (service principal)
-        run: |
-          az login --service-principal \
-            -u "${{ secrets.AZURE_CLIENT_ID }}" \
-            -p "${{ secrets.AZURE_CLIENT_SECRET }}" \
-            --tenant "$AZURE_TENANT_ID" --allow-no-subscriptions
-
       - name: Deploy solution
+        # cp_auth mints tokens directly from the SP via client-credentials OAuth
+        # (no `az login` needed). AZURE_TENANT_ID comes from the env-params step above.
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: python control_plane/deploy/cp_bootstrap.py "$WORKSPACE_BASE" "$ENVIRONMENT"

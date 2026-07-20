@@ -3,8 +3,9 @@
 Inputs: workspace base name + environment name (e.g. HackathonShuo UAT).
 Finds-or-creates the `<base>-<env>` workspace on the trial capacity, creates the
 lakehouses, then drives the existing tooling (var lib, deploy, config, run) against
-it. Uses the personal az login now; swap in a service principal later with no
-other change. Source DB password is injected at run time from .env (KV later).
+it. Auth via cp_auth: a service principal (SPN_CLIENT_ID/SECRET or AZURE_CLIENT_ID/
+SECRET) when configured, else the personal az login. Source DB password is injected
+at run time from .env (KV later).
 
     python cp_bootstrap.py HackathonShuo UAT
 """
@@ -17,6 +18,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+import cp_auth
 import cp_manifest as MF
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
@@ -29,10 +31,8 @@ LAKEHOUSES = MF.LAKEHOUSES
 
 
 def token(resource="https://api.fabric.microsoft.com"):
-    return subprocess.run(
-        ["az", "account", "get-access-token", "--tenant", TENANT, "--resource",
-         resource, "--query", "accessToken", "-o", "tsv"],
-        capture_output=True, text=True, shell=True).stdout.strip()
+    # SP (client-credentials) when configured, else personal az login — see cp_auth.
+    return cp_auth.get_token(resource)
 
 
 def H(t):

@@ -15,6 +15,8 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+import cp_auth
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 # CP_TARGET_WORKSPACE_ID lets the bootstrap point deploy/run at another workspace (e.g. UAT).
@@ -25,14 +27,8 @@ API = "https://api.fabric.microsoft.com/v1"
 
 
 def token(resource="https://api.fabric.microsoft.com"):
-    cmd = ["az", "account", "get-access-token", "--resource", resource,
-           "--query", "accessToken", "-o", "tsv"]
-    if TENANT:
-        cmd[3:3] = ["--tenant", TENANT]
-    out = subprocess.run(cmd, capture_output=True, text=True, shell=True)
-    if out.returncode or not out.stdout.strip():
-        sys.exit(f"az token error: {out.stderr.strip()}")
-    return out.stdout.strip()
+    # SP (client-credentials) when configured, else personal az login — see cp_auth.
+    return cp_auth.get_token(resource)
 
 
 def _headers(tok):

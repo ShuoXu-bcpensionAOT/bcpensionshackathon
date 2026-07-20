@@ -14,6 +14,8 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+import cp_auth
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 TENANT = os.getenv("AZURE_TENANT_ID")
@@ -35,14 +37,8 @@ CONFIG_DIR = REPO / "control_plane" / "config"
 
 
 def _token(resource):
-    cmd = ["az", "account", "get-access-token", "--resource", resource,
-           "--query", "accessToken", "-o", "tsv"]
-    if TENANT:
-        cmd[3:3] = ["--tenant", TENANT]
-    out = subprocess.run(cmd, capture_output=True, text=True, shell=True)
-    if out.returncode or not out.stdout.strip():
-        sys.exit(f"az token error: {out.stderr.strip()}")
-    return out.stdout.strip()
+    # SP (client-credentials) when configured, else personal az login — see cp_auth.
+    return cp_auth.get_token(resource)
 
 
 def storage_token():
