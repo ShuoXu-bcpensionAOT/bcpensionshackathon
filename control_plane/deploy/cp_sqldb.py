@@ -19,7 +19,7 @@ CONFIG_DB_NAME = "config_db"
 # Ordered DDL (parents before children for FK creation).
 DDL = [
     ("datasource", """CREATE TABLE dbo.datasource(
-        source_id INT PRIMARY KEY, source_name NVARCHAR(128), source_type NVARCHAR(50),
+        source_id INT IDENTITY(1,1) PRIMARY KEY, source_name NVARCHAR(128), source_type NVARCHAR(50),
         database_name NVARCHAR(128), load_group INT, ingestion_mode NVARCHAR(50), is_active BIT,
         connector NVARCHAR(50), connection_json NVARCHAR(MAX))"""),
     ("model", """CREATE TABLE dbo.model(
@@ -77,6 +77,9 @@ COLUMNS = {
     "pbi_dataset": ["dataset_id", "load_group", "workspace_id", "dataset_name", "is_active"],
 }
 BOOL_COLS = {"is_active"}
+# Tables whose PK is an IDENTITY column — cp_config wraps their load in SET IDENTITY_INSERT so the
+# ids captured in YAML replay identically across environments (deterministic promotion).
+IDENTITY_TABLES = {"datasource"}
 # Deterministic export order (stable git diffs) — the primary key of each table.
 ORDER_BY = {
     "datasource": "source_id",
@@ -136,6 +139,32 @@ MIGRATIONS = [
 ]
 
 
+def _migrate_datasource_identity(cur):
+    """Convert datasource.source_id to IDENTITY on config DBs created before it was one.
+    SQL Server can't ALTER a column to IDENTITY, so rebuild the (tiny) table, preserving the
+    existing ids (via IDENTITY_INSERT) and the source_object FK."""
+    if not cur.execute("SELECT OBJECT_ID('dbo.datasource','U')").fetchval():
+        return                                          # fresh DB -> CREATE already uses IDENTITY
+    if cur.execute("SELECT COLUMNPROPERTY(OBJECT_ID('dbo.datasource'),'source_id','IsIdentity')").fetchval() == 1:
+        return                                          # already identity
+    cols = ",".join(f"[{c}]" for c in COLUMNS["datasource"])
+    fks = [r[0] for r in cur.execute(
+        "SELECT name FROM sys.foreign_keys WHERE referenced_object_id=OBJECT_ID('dbo.datasource')").fetchall()]
+    cur.execute("SELECT * INTO #ds_bak FROM dbo.datasource")
+    for fk in fks:                                      # only source_object references datasource
+        cur.execute(f"ALTER TABLE dbo.source_object DROP CONSTRAINT [{fk}]")
+    cur.execute("DROP TABLE dbo.datasource")
+    cur.execute(dict(DDL)["datasource"])                # recreate with IDENTITY
+    cur.execute("SET IDENTITY_INSERT dbo.datasource ON")
+    cur.execute(f"INSERT INTO dbo.datasource ({cols}) SELECT {cols} FROM #ds_bak")
+    cur.execute("SET IDENTITY_INSERT dbo.datasource OFF")
+    cur.execute("DROP TABLE #ds_bak")
+    if fks:
+        cur.execute("ALTER TABLE dbo.source_object ADD CONSTRAINT FK_source_object_datasource "
+                    "FOREIGN KEY(source_id) REFERENCES dbo.datasource(source_id)")
+    print("  migrated datasource.source_id -> IDENTITY")
+
+
 def ensure_schema(cn):
     cur = cn.cursor()
     for name, ddl in DDL:
@@ -144,4 +173,5 @@ def ensure_schema(cn):
     for tbl, col, coltype in MIGRATIONS:              # add columns to pre-existing tables
         if not cur.execute(f"SELECT COL_LENGTH('dbo.{tbl}','{col}')").fetchval():
             cur.execute(f"ALTER TABLE dbo.{tbl} ADD [{col}] {coltype}")
+    _migrate_datasource_identity(cur)                 # source_id -> IDENTITY (rebuild if needed)
     cn.commit()

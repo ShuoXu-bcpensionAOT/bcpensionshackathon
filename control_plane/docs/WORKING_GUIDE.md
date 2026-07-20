@@ -212,7 +212,7 @@ erDiagram
 ### 4.1 `datasource` — source systems
 | Column | Type | Notes / allowed values |
 |--------|------|------------------------|
-| `source_id` | INT PK | unique id |
+| `source_id` | INT PK **IDENTITY** | auto-assigned — never insert by hand; use `SCOPE_IDENTITY()` for the FK. `cp_config` preserves ids across envs via `IDENTITY_INSERT`. |
 | `source_name` | str | display name (stamped into bronze `_source_system`) |
 | `source_type` | str | free-text descriptor (e.g. `SQL`, `API`) |
 | `database_name` | str | source database (JDBC/ODBC) |
@@ -434,15 +434,16 @@ deploy unbound and Oracle/DB2 use the self-install path.
 
 **Worked example — load a Statistics Canada subset (config only):**
 ```sql
--- 1) the source system + its connector
-INSERT INTO dbo.datasource (source_id,source_name,source_type,load_group,ingestion_mode,is_active,connector)
-VALUES (2,'stats_can','API',2,'api',1,'statcan_wds');
+-- 1) the source system + its connector. source_id is IDENTITY (auto) — grab it for the FK.
+INSERT INTO dbo.datasource (source_name,source_type,load_group,ingestion_mode,is_active,connector)
+VALUES ('stats_can','API',2,'api',1,'statcan_wds');
+DECLARE @source_id INT = SCOPE_IDENTITY();
 
 -- 2) the object: table 14100287 (Labour force), filtered to a BC/Total/Estimate/Seasonally-adjusted
 --    slice, landing a controlled column set with VALUE as double. target_name null -> derived name.
 INSERT INTO dbo.source_object
   (object_id,source_id,source_schema,source_table,load_type,key_columns_json,is_active,processing_state,suffix,source_options_json)
-VALUES ('statcan_labour_force',2,NULL,'labour_force','full','["REF_DATE","VECTOR"]',1,'ACTIVE','bc',
+VALUES ('statcan_labour_force',@source_id,NULL,'labour_force','full','["REF_DATE","VECTOR"]',1,'ACTIVE','bc',
  '{"table_id":"14100287","language":"en",
    "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
    "select":{"columns":["REF_DATE","GEO","Labour_force_characteristics","Age_group","Gender","Statistics","Data_type","VECTOR","COORDINATE","VALUE","UOM"],

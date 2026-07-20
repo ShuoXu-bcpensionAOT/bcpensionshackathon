@@ -61,20 +61,26 @@ automatically on any existing `config_db` (idempotent `ALTER … ADD`):
 Run these in the Fabric **`config_db`** SQL query editor (or via `cp_config` from YAML). Idempotent:
 the deletes let you re-run safely.
 
+> **`source_id` is auto-assigned.** `datasource.source_id` is an `IDENTITY` column — never pick it
+> by hand. Insert the datasource *without* `source_id`, grab the assigned value with
+> `SCOPE_IDENTITY()`, and use it for the `source_object` FK. (Run §3 as a single batch so the
+> `DECLARE`/`SCOPE_IDENTITY()` stay in scope.)
+
 ```sql
--- clean prior StatCan rows (safe re-run)
+-- clean prior StatCan rows (safe re-run) — delete children first, datasource by NAME (not id)
 DELETE FROM dbo.dq_rule       WHERE object_id = 'statcan_labour_force';
 DELETE FROM dbo.source_object WHERE object_id = 'statcan_labour_force';
 DELETE FROM dbo.steps         WHERE load_group = 2;
-DELETE FROM dbo.datasource    WHERE source_id = 2;
+DELETE FROM dbo.datasource    WHERE source_name = 'stats_can';
 
--- 3.1  datasource — the source system + which connector loads it
+-- 3.1  datasource — source system + connector. NO source_id (IDENTITY auto-assigns it).
 INSERT INTO dbo.datasource
-  (source_id, source_name, source_type, database_name, load_group, ingestion_mode, is_active, connector, connection_json)
+  (source_name, source_type, database_name, load_group, ingestion_mode, is_active, connector, connection_json)
 VALUES
-  (2, 'stats_can', 'API', NULL, 2, 'api', 1, 'statcan_wds', NULL);
+  ('stats_can', 'API', NULL, 2, 'api', 1, 'statcan_wds', NULL);
+DECLARE @source_id INT = SCOPE_IDENTITY();   -- the id just assigned to stats_can
 
--- 3.2  source_object — the object to ingest (one StatCan table)
+-- 3.2  source_object — the object to ingest (one StatCan table). Reference the datasource by @source_id.
 --   target_name NULL  -> name is derived (see §5): stats_can_dbo_labour_force_bc
 --   key_columns_json  -> silver dedupe/merge key (snake_cased internally: ref_date, vector)
 --   source_options_json -> connector params: which table, filters (SUBSET), select (SCHEMA)
@@ -84,7 +90,7 @@ INSERT INTO dbo.source_object
    key_columns_json, watermark_column, watermark_type, is_active, processing_state,
    source_options_json, suffix)
 VALUES
-  ('statcan_labour_force', 2, NULL, 'labour_force', NULL, 'full',
+  ('statcan_labour_force', @source_id, NULL, 'labour_force', NULL, 'full',
    '["REF_DATE","VECTOR"]', NULL, NULL, 1, 'ACTIVE',
    '{"table_id":"14100287","language":"en",
      "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
