@@ -21,7 +21,7 @@ DDL = [
     ("datasource", """CREATE TABLE dbo.datasource(
         source_id INT IDENTITY(1,1) PRIMARY KEY, source_name NVARCHAR(128), source_type NVARCHAR(50),
         database_name NVARCHAR(128), load_group INT, ingestion_mode NVARCHAR(50), is_active BIT,
-        connector NVARCHAR(50), connection_json NVARCHAR(MAX))"""),
+        connector NVARCHAR(50), connection_json NVARCHAR(MAX), secret_name NVARCHAR(256))"""),
     ("model", """CREATE TABLE dbo.model(
         model_id INT PRIMARY KEY, model_name NVARCHAR(128), load_group INT, is_active BIT)"""),
     ("source_object", """CREATE TABLE dbo.source_object(
@@ -61,7 +61,8 @@ DDL = [
 LOAD_ORDER = [name for name, _ in DDL]
 COLUMNS = {
     "datasource": ["source_id", "source_name", "source_type", "database_name",
-                   "load_group", "ingestion_mode", "is_active", "connector", "connection_json"],
+                   "load_group", "ingestion_mode", "is_active", "connector", "connection_json",
+                   "secret_name"],
     "model": ["model_id", "model_name", "load_group", "is_active"],
     "source_object": ["object_id", "source_id", "source_schema", "source_table", "target_name",
                       "load_type", "key_columns_json", "watermark_column", "watermark_type",
@@ -134,6 +135,7 @@ def connect(retries=4):
 MIGRATIONS = [
     ("datasource", "connector", "NVARCHAR(50)"),
     ("datasource", "connection_json", "NVARCHAR(MAX)"),
+    ("datasource", "secret_name", "NVARCHAR(256)"),
     ("source_object", "source_options_json", "NVARCHAR(MAX)"),
     ("source_object", "suffix", "NVARCHAR(128)"),
 ]

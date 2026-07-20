@@ -34,6 +34,7 @@ LAYER_NAMES = {
 }
 SOURCE_SERVER = var("source_server", None)
 SOURCE_CONNECTION = var("source_connection", "")
+KEY_VAULT_URL = var("key_vault_url", None)
 
 WS_ID = notebookutils.runtime.context["currentWorkspaceId"]
 _lh_by_name = {l["displayName"]: l["id"] for l in notebookutils.lakehouse.list()}
@@ -321,12 +322,40 @@ def jdbc_read(server, database, user, password, dbtable=None, query=None, tries=
     return _jdbc_load(url, d["driver"], user, password, dbtable, query, tries)
 
 
+def get_secret(name):
+    """Read a secret from the Key Vault named by the cp_vars `key_vault_url` variable
+    (uses the running identity's token — grant it KV 'get' on that vault)."""
+    if not name:
+        return None
+    if not KEY_VAULT_URL:
+        raise Exception("cp_vars.key_vault_url is not set — cannot resolve secret " + str(name))
+    return notebookutils.credentials.getSecret(KEY_VAULT_URL, name)
+
+
 def _opts(o):
     return json.loads(o["source_options_json"]) if o.get("source_options_json") else {}
 
 
 def _conn(o):
     return json.loads(o["connection_json"]) if o.get("connection_json") else {}
+
+
+def _resolve_conn(o):
+    """Full connection params for a source: the KV secret named by datasource.secret_name is the
+    base (the COMPLETE connection info — host/port/db/user/password or a raw connection string/url),
+    with connection_json layered on top for non-secret overrides (e.g. mode, driver). The secret
+    value may be a JSON object (parsed) or a raw string (kept under 'connection_string')."""
+    conn = {}
+    raw = get_secret(o.get("secret_name")) if o.get("secret_name") else None
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            conn = parsed if isinstance(parsed, dict) else {"connection_string": raw}
+        except (ValueError, TypeError):
+            conn = {"connection_string": raw}
+    if o.get("connection_json"):
+        conn = {**conn, **json.loads(o["connection_json"])}
+    return conn
 
 
 def _ic_jdbc(o, user, password):
@@ -336,10 +365,12 @@ def _ic_jdbc(o, user, password):
     if name in ("sql", "mssql", "custom_jdbc"):
         name = "sqlserver"
     d = JDBC_DIALECTS.get(name)
-    c, opts = _conn(o), _opts(o)
+    c, opts = _resolve_conn(o), _opts(o)
+    user = c.get("user") or user
+    password = c.get("password") or password
     driver = c.get("driver") or (d["driver"] if d else None)
-    if c.get("url"):
-        url = c["url"]
+    if c.get("url") or c.get("connection_string"):
+        url = c.get("url") or c.get("connection_string")
     elif d:
         url = d["url"].format(host=c.get("host") or SOURCE_SERVER,
                               port=c.get("port") or d["port"],
@@ -372,11 +403,14 @@ def _ic_odbc(o, user, password):
     connection_json.odbc = an ODBC connection string ({user}/{password} placeholders
     substituted at runtime). Needs the platform ODBC driver/DSN in the Fabric Environment."""
     import pyodbc
-    c, opts = _conn(o), _opts(o)
+    c, opts = _resolve_conn(o), _opts(o)
+    user = c.get("user") or user
+    password = c.get("password") or password
     cs = c.get("odbc") or c.get("connection_string")
     if not cs:
-        raise Exception("odbc connector needs connection_json.odbc (an ODBC connection string)")
-    cs = cs.format(user=user, password=password, **{k: v for k, v in c.items() if k != "odbc"})
+        raise Exception("odbc connector needs a connection string (secret or connection_json.odbc)")
+    cs = cs.format(user=user, password=password,
+                   **{k: v for k, v in c.items() if k not in ("odbc", "user", "password")})
     query = opts.get("query")
     if not query:
         schema, table = o.get("source_schema"), o.get("source_table")
@@ -480,9 +514,11 @@ def _ic_oracle(o, user, password):
     """Oracle. Default: pure-Python `oracledb` THIN mode (pip-installed on demand, no Oracle
     client, no jar) reading driver-side. Opt in to distributed Spark JDBC (needs the ojdbc jar
     on an attached Fabric Environment) with connection_json.mode='jdbc'."""
-    c, opts = _conn(o), _opts(o)
+    c, opts = _resolve_conn(o), _opts(o)
     if (c.get("mode") or "").lower() == "jdbc":
         return _ic_jdbc(o, user, password)
+    user = c.get("user") or user
+    password = c.get("password") or password
     oracledb = _ensure_pkg("oracledb")
     dsn = c.get("dsn") or (f"{c.get('host')}:{c.get('port', 1521)}/"
                            f"{c.get('service') or c.get('database') or o.get('database_name')}")
@@ -494,9 +530,11 @@ def _ic_db2(o, user, password):
     """IBM DB2. Default: pure-Python `ibm_db` (pip-installed on demand; the wheel bundles the
     client) reading driver-side. Opt in to distributed Spark JDBC (needs the db2jcc jar on an
     attached Fabric Environment) with connection_json.mode='jdbc'."""
-    c, opts = _conn(o), _opts(o)
+    c, opts = _resolve_conn(o), _opts(o)
     if (c.get("mode") or "").lower() == "jdbc":
         return _ic_jdbc(o, user, password)
+    user = c.get("user") or user
+    password = c.get("password") or password
     dbi = _ensure_pkg("ibm_db_dbi", "ibm_db")
     cs = (f"DATABASE={c.get('database') or o.get('database_name')};HOSTNAME={c.get('host')};"
           f"PORT={c.get('port', 50000)};PROTOCOL=TCPIP;UID={user};PWD={password};")

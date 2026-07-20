@@ -8,6 +8,7 @@
   load_group: 1
   ingestion_mode: custom_jdbc
   is_active: true
+  secret_name: source-adventureworks
 - source_id: 2
   source_name: stats_can
   source_type: API
