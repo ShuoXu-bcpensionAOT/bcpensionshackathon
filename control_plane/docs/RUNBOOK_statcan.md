@@ -61,49 +61,53 @@ automatically on any existing `config_db` (idempotent `ALTER … ADD`):
 Run these in the Fabric **`config_db`** SQL query editor (or via `cp_config` from YAML). Idempotent:
 the deletes let you re-run safely.
 
-> **`source_id` is auto-assigned.** `datasource.source_id` is an `IDENTITY` column — never pick it
-> by hand. Insert the datasource *without* `source_id`, grab the assigned value with
-> `SCOPE_IDENTITY()`, and use it for the `source_object` FK. (Run §3 as a single batch so the
-> `DECLARE`/`SCOPE_IDENTITY()` stay in scope.)
+> **You do NOT hand-author objects.** `source_object` rows are **auto-discovered** by the metadata
+> step. You (1) register the *datasource* (declaring which table(s) it covers), (2) run discovery,
+> which materializes the `source_object` as `is_active=0`, then (3) tweak it (filters/select) and
+> activate it. `source_id` is also auto-assigned (`IDENTITY`) — never pick it by hand.
 
+**Step 3.1 — register the datasource** (declares the table_id(s) in `connection_json.tables`; no `source_id`):
 ```sql
--- clean prior StatCan rows (safe re-run) — delete children first, datasource by NAME (not id)
-DELETE FROM dbo.dq_rule       WHERE object_id = 'statcan_labour_force';
-DELETE FROM dbo.source_object WHERE object_id = 'statcan_labour_force';
-DELETE FROM dbo.steps         WHERE load_group = 2;
-DELETE FROM dbo.datasource    WHERE source_name = 'stats_can';
-
--- 3.1  datasource — source system + connector. NO source_id (IDENTITY auto-assigns it).
+DELETE FROM dbo.datasource WHERE source_name = 'stats_can';   -- safe re-run
 INSERT INTO dbo.datasource
   (source_name, source_type, database_name, load_group, ingestion_mode, is_active, connector, connection_json)
 VALUES
-  ('stats_can', 'API', NULL, 2, 'api', 1, 'statcan_wds', NULL);
-DECLARE @source_id INT = SCOPE_IDENTITY();   -- the id just assigned to stats_can
+  ('stats_can', 'API', NULL, 2, 'api', 1, 'statcan_wds',
+   '{"tables":[{"table_id":"14100287","name":"labour_force"}]}');
+```
+(For a SQL Server source you'd instead set `secret_name` to a Key Vault secret holding the
+connection — see §10 — and declare nothing; discovery enumerates every table.)
 
--- 3.2  source_object — the object to ingest (one StatCan table). Reference the datasource by @source_id.
---   target_name NULL  -> name is derived (see §5): stats_can_dbo_labour_force_bc
---   key_columns_json  -> silver dedupe/merge key (snake_cased internally: ref_date, vector)
---   source_options_json -> connector params: which table, filters (SUBSET), select (SCHEMA)
---   suffix 'bc'       -> appended to the derived table name
-INSERT INTO dbo.source_object
-  (object_id, source_id, source_schema, source_table, target_name, load_type,
-   key_columns_json, watermark_column, watermark_type, is_active, processing_state,
-   source_options_json, suffix)
-VALUES
-  ('statcan_labour_force', @source_id, NULL, 'labour_force', NULL, 'full',
-   '["REF_DATE","VECTOR"]', NULL, NULL, 1, 'ACTIVE',
-   '{"table_id":"14100287","language":"en",
-     "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
-     "select":{"columns":["REF_DATE","GEO","Labour_force_characteristics","Age_group","Gender","Statistics","Data_type","VECTOR","COORDINATE","VALUE","UOM"],
-               "cast":{"VALUE":"double"}}}',
-   'bc');
+**Step 3.2 — discover** (materializes `source_object` rows as `is_active=0`): run the **metadata**
+pipeline once — Fabric UI: run `cp_pl_metadata` with `load_group=2` (or the whole `cp_pl_main`;
+bronze/silver will no-op while the object is inactive). Discovery creates `statcan_labour_force`
+with the derived name `stats_can_dbo_labour_force_bc` and seeded options `{table_id, language}`.
+Existing objects are never overwritten.
 
--- 3.3  dq_rule — error-severity not-null on the keys (failing rows are quarantined on silver)
+**Step 3.3 — tweak the discovered object + activate it** (add the subset filters + schema selection,
+set the key/suffix, flip `is_active=1`):
+```sql
+UPDATE dbo.source_object
+SET key_columns_json = '["REF_DATE","VECTOR"]',
+    suffix = 'bc',
+    source_options_json = '{"table_id":"14100287","language":"en",
+      "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
+      "select":{"columns":["REF_DATE","GEO","Labour_force_characteristics","Age_group","Gender","Statistics","Data_type","VECTOR","COORDINATE","VALUE","UOM"],
+                "cast":{"VALUE":"double"}}}',
+    is_active = 1
+WHERE object_id = 'statcan_labour_force';
+```
+> Only objects you activate here load. Everything discovery finds stays `is_active=0` until you
+> approve it — so an API/DB source can't silently pull tables you didn't intend.
+
+**Step 3.4 — DQ rules + orchestration steps for the load group:**
+```sql
+-- dq_rule — error-severity not-null on the keys (failing rows are quarantined on silver)
 INSERT INTO dbo.dq_rule (rule_id, object_id, column_name, rule_type, severity, is_active) VALUES
   ('statcan_ref_date_nn', 'statcan_labour_force', 'ref_date', 'not_null', 'error', 1),
   ('statcan_vector_nn',   'statcan_labour_force', 'vector',   'not_null', 'error', 1);
 
--- 3.4  steps — orchestration for load group 2 (metadata/bronze/silver on; gold/pbi off)
+-- steps — orchestration for load group 2 (metadata/bronze/silver on; gold/pbi off)
 INSERT INTO dbo.steps (load_group, step_order, step_key, child_pipeline, is_active) VALUES
   (2, 1, 'load_metadata', 'cp_pl_metadata', 1),
   (2, 2, 'load_bronze',   'cp_pl_bronze',   1),
@@ -236,3 +240,25 @@ Copy the §3 pattern with a new `object_id` and edit `source_options_json`:
 - Add `dq_rule` rows and, if it's a new load group, `steps` rows for that group.
 Then run `cp_pl_main` with the matching `load_group`.
 ```
+
+---
+
+## 10. Connections via Key Vault (`datasource.secret_name`)
+Connection info (especially credentials) lives in **Key Vault**, not in config. A datasource points
+at a secret by name; the secret's value is the **complete connection payload** for the source.
+```sql
+-- e.g. a SQL Server source: the secret holds the whole connection, config holds only its NAME
+UPDATE dbo.datasource SET secret_name = 'source-adventureworks' WHERE source_name = 'AdventureWorks';
+```
+The KV secret `source-adventureworks` value (JSON):
+```json
+{"host":"20.63.101.180","port":1433,"database":"AdventureWorks2025","user":"dbadmin","password":"…"}
+```
+- The value may be a JSON object (as above) or a raw connection string/url. `connection_json` layers
+  non-secret overrides on top (e.g. `{"mode":"jdbc"}`).
+- At run time the connector resolves it via `notebookutils.credentials.getSecret` using the **running
+  identity** — so automated pipeline runs must execute **as the service principal** (which has KV
+  *get*). The vault URL is the `cp_vars` variable `key_vault_url`.
+- **No secret value ever lands in git or config** — only the secret *name*. Writing a secret needs a
+  principal with KV *set* (your personal account; the SPN is read-only).
+- StatCan needs no credentials, so its datasource has no `secret_name`.
