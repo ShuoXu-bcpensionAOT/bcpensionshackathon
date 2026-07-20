@@ -106,12 +106,26 @@ DIAGRAMS = {
 }
 
 
+def _fetch_diagram(mermaid):
+    """Render mermaid -> image bytes. Prefer kroki (PNG); fall back to mermaid.ink (JPEG)
+    when kroki's renderer is unavailable."""
+    import base64
+    src = MERMAID_INIT + mermaid
+    try:
+        r = requests.post("https://kroki.io/mermaid/png", json={"diagram_source": src}, timeout=40)
+        r.raise_for_status()
+        return r.content
+    except Exception as e:
+        print(f"  kroki unavailable ({e}); using mermaid.ink")
+        b = base64.urlsafe_b64encode(src.encode()).decode()
+        r = requests.get("https://mermaid.ink/img/" + b, timeout=40)
+        r.raise_for_status()
+        return r.content
+
+
 def render(mermaid):
-    r = requests.post("https://kroki.io/mermaid/png",
-                      json={"diagram_source": MERMAID_INIT + mermaid}, timeout=40)
-    r.raise_for_status()
     # flatten any transparency onto solid white so it's readable on any page/theme
-    img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+    img = Image.open(io.BytesIO(_fetch_diagram(mermaid))).convert("RGBA")
     bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
     flat = Image.alpha_composite(bg, img).convert("RGB")
     buf = io.BytesIO()
