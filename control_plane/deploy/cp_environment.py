@@ -99,7 +99,9 @@ def publish(t, wid, eid, timeout=1800):
             return
         if state in ("Failed", "Cancelled"):
             sys.exit(f"publish ended in state {state}: {e}")
-    print("  WARN: publish not confirmed within timeout")
+    # Fail hard: notebooks bound to an unpublished environment fail at run time, so the
+    # deploy MUST NOT proceed until publish is confirmed.
+    sys.exit(f"environment publish not confirmed within {timeout}s — aborting before notebook deploy")
 
 
 def set_workspace_default(t, wid, name):

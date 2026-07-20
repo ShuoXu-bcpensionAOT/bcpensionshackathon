@@ -407,9 +407,20 @@ client; `ibm_db` = bundled client) into the session on first use — still zero 
 reading driver-side (good for modest–moderate volumes). For **distributed** Spark JDBC on large
 Oracle/DB2 tables, set `connection_json.mode:"jdbc"` and provide the driver jar via a Fabric
 **Environment**: uncomment the `environment` block in `deploy/manifest.yml`
-(`{name, pip:[oracledb,ibm_db], jars:[…ojdbc11.jar…], set_default}`) and `cp_bootstrap` creates,
-uploads, publishes it and (optionally) sets it as the workspace default via `cp_environment.py`.
-The jars are proprietary — drop them in `control_plane/deploy/jars/` (licensing is on you).
+(`{name, pip:[oracledb,ibm_db], jars:[…ojdbc11.jar…], attach:[bronze_worker], set_default}`) and
+`cp_bootstrap` creates, uploads, publishes it and (optionally) sets it as the workspace default
+via `cp_environment.py`. The jars are proprietary — drop them in `control_plane/deploy/jars/`
+(licensing is on you).
+
+**Deploy ordering (important for promotion to a new workspace).** A notebook bound to an
+Environment fails at run time if that Environment isn't published yet, so the order is a hard
+invariant: `cp_bootstrap` **provisions + publishes the Environment (blocking) BEFORE it deploys
+the notebooks**, and aborts the whole deploy if the publish isn't confirmed. Only the notebooks
+in `environment.attach` (default `[bronze_worker]`, the connector runner) are bound to the env —
+so just those pay the session-startup cost; the rest run on default compute. The binding uses the
+**per-workspace** Environment id resolved at deploy time (no hardcoded ids), so promotion to a
+fresh workspace re-creates and re-binds correctly. When no `environment` block is set, notebooks
+deploy unbound and Oracle/DB2 use the self-install path.
 
 **`source_options_json`** (per source object) carries:
 - `query` — explicit extract SQL (JDBC/ODBC), overrides schema/table

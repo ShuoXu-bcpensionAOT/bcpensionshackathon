@@ -39,4 +39,5 @@ superseded_notebooks: [cp_01_setup, cp_02_ingest_bronze, cp_03_build_silver,
 #   name: cp_ingest_drivers
 #   pip: [oracledb, ibm_db]                    # pre-install the pure-Python drivers
 #   jars: []                                   # e.g. [control_plane/deploy/jars/ojdbc11.jar] (operator-supplied)
-#   set_default: false
+#   attach: [bronze_worker]                    # notebooks bound to the env (only these pay startup cost)
+#   set_default: false                         # true = ALL notebooks use it (slower session starts)

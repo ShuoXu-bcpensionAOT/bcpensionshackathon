@@ -272,13 +272,21 @@ def main():
     wid = ensure_workspace(t, name)
     ensure_sp_admin(t, wid)                            # grant deploy SP admin (idempotent)
     ensure_lakehouses(t, wid)
+    # ORDERING INVARIANT: the driver Environment must be created AND fully published BEFORE any
+    # notebook that binds to it is deployed — a notebook bound to an unpublished/absent env fails
+    # at run time. CE.provision blocks until publish is confirmed (and aborts the deploy if it is
+    # not), so it runs here, ahead of cp_deploy below.
+    env_id = None
     if MF.ENVIRONMENT:                                 # opt-in driver Environment (manifest block)
-        print("provisioning driver Environment (publish takes minutes)...")
-        CE.provision(wid, MF.ENVIRONMENT)
+        print("provisioning driver Environment (publish takes minutes; blocks until ready)...")
+        env_id = CE.provision(wid, MF.ENVIRONMENT)
     sqldb_id = ensure_sqldb(t, wid, MF.SQL_DATABASE)
     time.sleep(10)  # let OneLake endpoints settle
 
     envset = {"CP_TARGET_WORKSPACE": name, "CP_TARGET_WORKSPACE_ID": wid}
+    if env_id:                                         # attach the driver env to connector notebooks
+        envset["CP_ENV_ID"] = env_id
+        envset["CP_ENV_ATTACH"] = ",".join(MF.ENVIRONMENT.get("attach", ["bronze_worker"]))
     step(envset, "cp_varlib.py")                       # variable library
     step(envset, "cp_deploy.py", "deploy")             # framework + worker notebooks
     remove_superseded(t, wid)                          # prune old orchestrator notebooks

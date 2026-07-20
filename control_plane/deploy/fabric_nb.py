@@ -51,10 +51,11 @@ def _poll_lro(resp, tok):
     return resp
 
 
-def build_ipynb(cells, default_lakehouse_id=None, default_lakehouse_name=None):
+def build_ipynb(cells, default_lakehouse_id=None, default_lakehouse_name=None, environment_id=None):
     """cells: list of code strings (or ('md', text) for markdown).
     A code cell whose first line is '# PARAMETERS' is tagged as a Fabric
-    parameters cell."""
+    parameters cell. environment_id attaches the notebook to a Fabric Environment
+    (so its libraries/driver jars are on the classpath)."""
     nb_cells = []
     for c in cells:
         if isinstance(c, tuple) and c[0] == "md":
@@ -70,12 +71,17 @@ def build_ipynb(cells, default_lakehouse_id=None, default_lakehouse_name=None):
         "language_info": {"name": "python"},
         "kernelspec": {"name": "synapse_pyspark", "display_name": "Synapse PySpark"},
     }
+    deps = {}
     if default_lakehouse_id:
-        meta["dependencies"] = {"lakehouse": {
+        deps["lakehouse"] = {
             "default_lakehouse": default_lakehouse_id,
             "default_lakehouse_name": default_lakehouse_name,
             "default_lakehouse_workspace_id": WS,
-        }}
+        }
+    if environment_id:
+        deps["environment"] = {"environmentId": environment_id, "workspaceId": WS}
+    if deps:
+        meta["dependencies"] = deps
     nb = {"cells": nb_cells, "metadata": meta, "nbformat": 4, "nbformat_minor": 5}
     return json.dumps(nb)
 

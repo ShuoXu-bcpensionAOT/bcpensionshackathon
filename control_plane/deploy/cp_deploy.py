@@ -35,10 +35,15 @@ def source_cells(name):
 
 def deploy(names):
     tok = FN.token()
+    # Attach the driver Environment (if provisioned) to the notebooks that run connectors,
+    # so their libraries / JDBC jars are on the classpath. Set by cp_bootstrap.
+    env_id = os.getenv("CP_ENV_ID") or None
+    attach = set(filter(None, (os.getenv("CP_ENV_ATTACH") or "").split(","))) if env_id else set()
     for name in names:
         cells = source_cells(name)
-        FN.upsert_notebook(tok, name, FN.build_ipynb(cells))
-        print(f"  deployed {name} ({len(cells)} cell(s))")
+        eid = env_id if name in attach else None
+        FN.upsert_notebook(tok, name, FN.build_ipynb(cells, environment_id=eid))
+        print(f"  deployed {name} ({len(cells)} cell(s))" + ("  [env-attached]" if eid else ""))
 
 
 def run(name, params):
