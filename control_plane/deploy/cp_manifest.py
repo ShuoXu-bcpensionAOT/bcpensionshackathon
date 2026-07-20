@@ -24,6 +24,9 @@ NOTEBOOKS = _M["notebooks"]                             # [{name, folder}] in de
 NOTEBOOK_ORDER = [n["name"] for n in NOTEBOOKS]
 PIPELINES = _M["pipelines"]                             # in deploy order
 SUPERSEDED_NOTEBOOKS = _M.get("superseded_notebooks", [])
+# Optional opt-in driver Environment: {name, pip:[...], jars:[...], set_default:bool}.
+# When present, cp_bootstrap provisions+publishes a Fabric Environment (Oracle/DB2 drivers etc.).
+ENVIRONMENT = _M.get("environment")
 
 NB_FOLDERS = {}                                         # {folder: [names]}
 for _n in NOTEBOOKS:

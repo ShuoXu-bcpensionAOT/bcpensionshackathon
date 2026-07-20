@@ -387,17 +387,29 @@ landed schema; control columns are added; the row lands in bronze. Silver is sou
 (it just reads the bronze table), so **a new source needs no notebook/pipeline changes — only
 config**. Add your own with `register_ingest_connector(name, fn)`.
 
-| `connector` | Reads | `connection_json` | Status |
-|-------------|-------|-------------------|--------|
-| `sqlserver` | SQL Server via Spark JDBC (complex types pruned; incremental watermark) | `{host,port,database}` or `{url,driver}`; falls back to the `cp_vars` `source_server` | **live** (AdventureWorks) |
-| `oracle` · `db2` · `postgresql` · `mysql` | that dialect via Spark JDBC | `{host,port,database}` (or `{url,driver}`) | code-complete — **needs the JDBC driver jar added to the Fabric Environment** |
-| `jdbc` | any JDBC via explicit url+driver | `{url,driver}` | needs the driver jar |
-| `odbc` | pyodbc on the driver node (modest volumes) | `{odbc:"<conn string with {user}/{password}>"}` | code-complete — **needs the ODBC driver/DSN in the Fabric Environment** |
-| `rest_api` | generic REST/JSON | base `{headers}`; per-object `url`/`method`/`params`/`record_path` in `source_options_json` | live |
-| `statcan_wds` | Statistics Canada WDS full-table download | — (params in `source_options_json`) | **live** (validated) |
+| `connector` | Reads | `connection_json` | Driver / setup |
+|-------------|-------|-------------------|----------------|
+| `sqlserver` | SQL Server via Spark JDBC (complex types pruned; incremental watermark) | `{host,port,database}` or `{url,driver}`; falls back to the `cp_vars` `source_server` | **bundled — zero setup** (validated: AdventureWorks) |
+| `postgresql` · `mysql` | that dialect via Spark JDBC (distributed) | `{host,port,database}` (or `{url,driver}`) | **jar bundled in the Fabric runtime — zero setup** |
+| `oracle` · `db2` | **default:** pure-Python driver-side (`oracledb` thin / `ibm_db`), **self-installing** on first use; **opt-in:** distributed Spark JDBC via `connection_json.mode:"jdbc"` | `{host,port,database/service}`; add `mode:"jdbc"` for the JDBC path | **plug-and-play** (driver pip-installs on demand — validated in Fabric). JDBC mode needs the ojdbc/db2jcc jar on an Environment. |
+| `jdbc` | any JDBC via explicit url+driver | `{url,driver}` | needs that driver jar on an Environment |
+| `odbc` | pyodbc on the driver node (modest volumes) | `{odbc:"<conn string with {user}/{password}>"}` | needs the platform ODBC driver/DSN |
+| `rest_api` | generic REST/JSON | base `{headers}`; per-object `url`/`method`/`params`/`record_path` in `source_options_json` | zero setup |
+| `statcan_wds` | Statistics Canada WDS full-table download | — (params in `source_options_json`) | zero setup (validated) |
 
-**Credentials** are never stored in config — SQL/ODBC user+password are passed at run time
+**Credentials** are never stored in config — SQL/ODBC/DB user+password are passed at run time
 (`src_user`/`src_password`, from `.env`/CI secret today; a Fabric Connection or Key Vault later).
+
+**Driver availability — plug-and-play.** SQL Server / Postgres / MySQL JDBC jars are already
+in the Fabric runtime, so those connectors need **no setup**. Oracle/DB2 have no bundled driver,
+so the connectors **self-install** their pure-Python driver (`oracledb` thin mode = no Oracle
+client; `ibm_db` = bundled client) into the session on first use — still zero manual setup,
+reading driver-side (good for modest–moderate volumes). For **distributed** Spark JDBC on large
+Oracle/DB2 tables, set `connection_json.mode:"jdbc"` and provide the driver jar via a Fabric
+**Environment**: uncomment the `environment` block in `deploy/manifest.yml`
+(`{name, pip:[oracledb,ibm_db], jars:[…ojdbc11.jar…], set_default}`) and `cp_bootstrap` creates,
+uploads, publishes it and (optionally) sets it as the workspace default via `cp_environment.py`.
+The jars are proprietary — drop them in `control_plane/deploy/jars/` (licensing is on you).
 
 **`source_options_json`** (per source object) carries:
 - `query` — explicit extract SQL (JDBC/ODBC), overrides schema/table

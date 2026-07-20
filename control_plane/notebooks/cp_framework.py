@@ -440,9 +440,74 @@ def _ic_statcan_wds(o, user, password):
     return spark.createDataFrame(pdf)                  # noqa: F821
 
 
+def _ensure_pkg(import_name, pip_name=None):
+    """Import a package, pip-installing it into the session on first use (plug-and-play).
+    Used by the pure-Python DB connectors so no Fabric Environment/driver jar is needed."""
+    import importlib
+    try:
+        return importlib.import_module(import_name)
+    except ImportError:
+        import subprocess
+        import sys
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", pip_name or import_name],
+                       check=True)
+        return importlib.import_module(import_name)
+
+
+def _default_query(o):
+    schema, table = o.get("source_schema"), o.get("source_table")
+    return f"SELECT * FROM {schema + '.' if schema else ''}{table}"
+
+
+def _dbapi_to_spark(cn, query):
+    """Run a query over a DB-API connection (driver-side) -> Spark DataFrame."""
+    import pandas as pd
+    try:
+        cur = cn.cursor()
+        cur.execute(query)
+        cols = [d[0] for d in cur.description]
+        rows = [tuple(r) for r in cur.fetchall()]
+    finally:
+        cn.close()
+    if not rows:
+        return spark.createDataFrame([], ", ".join(f"`{c}` string" for c in cols))  # noqa: F821
+    pdf = pd.DataFrame(rows, columns=cols)
+    pdf = pdf.where(pd.notnull(pdf), None)
+    return spark.createDataFrame(pdf)                  # noqa: F821
+
+
+def _ic_oracle(o, user, password):
+    """Oracle. Default: pure-Python `oracledb` THIN mode (pip-installed on demand, no Oracle
+    client, no jar) reading driver-side. Opt in to distributed Spark JDBC (needs the ojdbc jar
+    on an attached Fabric Environment) with connection_json.mode='jdbc'."""
+    c, opts = _conn(o), _opts(o)
+    if (c.get("mode") or "").lower() == "jdbc":
+        return _ic_jdbc(o, user, password)
+    oracledb = _ensure_pkg("oracledb")
+    dsn = c.get("dsn") or (f"{c.get('host')}:{c.get('port', 1521)}/"
+                           f"{c.get('service') or c.get('database') or o.get('database_name')}")
+    cn = oracledb.connect(user=user, password=password, dsn=dsn)   # thin mode
+    return _dbapi_to_spark(cn, opts.get("query") or _default_query(o))
+
+
+def _ic_db2(o, user, password):
+    """IBM DB2. Default: pure-Python `ibm_db` (pip-installed on demand; the wheel bundles the
+    client) reading driver-side. Opt in to distributed Spark JDBC (needs the db2jcc jar on an
+    attached Fabric Environment) with connection_json.mode='jdbc'."""
+    c, opts = _conn(o), _opts(o)
+    if (c.get("mode") or "").lower() == "jdbc":
+        return _ic_jdbc(o, user, password)
+    dbi = _ensure_pkg("ibm_db_dbi", "ibm_db")
+    cs = (f"DATABASE={c.get('database') or o.get('database_name')};HOSTNAME={c.get('host')};"
+          f"PORT={c.get('port', 50000)};PROTOCOL=TCPIP;UID={user};PWD={password};")
+    return _dbapi_to_spark(dbi.connect(cs, "", ""), opts.get("query") or _default_query(o))
+
+
 INGEST_CONNECTORS = {
-    "sqlserver": _ic_jdbc, "oracle": _ic_jdbc, "db2": _ic_jdbc,
-    "postgresql": _ic_jdbc, "mysql": _ic_jdbc, "jdbc": _ic_jdbc,
+    # bundled JDBC jars in the Fabric runtime -> distributed Spark JDBC, zero setup
+    "sqlserver": _ic_jdbc, "postgresql": _ic_jdbc, "mysql": _ic_jdbc, "jdbc": _ic_jdbc,
+    # not bundled -> pure-Python driver-side by default (self-installing), JDBC via mode='jdbc'
+    "oracle": _ic_oracle, "db2": _ic_db2,
     "odbc": _ic_odbc, "rest_api": _ic_rest_api, "statcan_wds": _ic_statcan_wds,
 }
 # connectors that support metadata schema discovery (INFORMATION_SCHEMA over JDBC)

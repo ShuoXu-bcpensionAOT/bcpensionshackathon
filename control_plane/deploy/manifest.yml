@@ -29,3 +29,14 @@ pipelines: [cp_pl_metadata, cp_pl_bronze, cp_pl_silver, cp_pl_gold, cp_pl_pbi, c
 # Items to remove from every environment on deploy (superseded by the pipeline orchestration).
 superseded_notebooks: [cp_01_setup, cp_02_ingest_bronze, cp_03_build_silver,
                        cp_04_build_gold, cp_09_orchestrate]
+
+# OPTIONAL — opt-in driver Environment. Not needed for plug-and-play: SQL Server / Postgres /
+# MySQL JDBC jars are bundled, and the Oracle/DB2 connectors self-install their pure-Python
+# driver on demand. Uncomment to pre-install drivers (zero per-session pip) and/or add Oracle/DB2
+# JDBC jars for DISTRIBUTED Spark JDBC (connection_json.mode='jdbc'). Publish takes minutes;
+# set_default adds session startup time for ALL notebooks (leave false unless needed).
+# environment:
+#   name: cp_ingest_drivers
+#   pip: [oracledb, ibm_db]                    # pre-install the pure-Python drivers
+#   jars: []                                   # e.g. [control_plane/deploy/jars/ojdbc11.jar] (operator-supplied)
+#   set_default: false

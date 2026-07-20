@@ -327,14 +327,23 @@ def main():
       "a NEW SOURCE NEEDS ONLY CONFIG — no notebook/pipeline changes. Extend with "
       "register_ingest_connector(name, fn). Credentials are never stored in config (SQL/ODBC "
       "user+password are passed at run time).")
-    table(["connector", "Reads", "Status"], [
-        ["sqlserver", "SQL Server via Spark JDBC (complex types pruned; incremental watermark)", "live (AdventureWorks)"],
-        ["oracle / db2 / postgresql / mysql", "that dialect via Spark JDBC", "code-complete — needs the JDBC driver jar in the Fabric Environment"],
-        ["jdbc", "any JDBC via explicit url+driver (connection_json)", "needs the driver jar"],
-        ["odbc", "pyodbc on the driver node (modest volumes)", "code-complete — needs the ODBC driver/DSN"],
-        ["rest_api", "generic REST/JSON (url/method/params/record_path in source_options_json)", "live"],
-        ["statcan_wds", "Statistics Canada WDS full-table download", "live (validated)"],
+    table(["connector", "Reads", "Driver / setup"], [
+        ["sqlserver", "SQL Server via Spark JDBC (complex types pruned; incremental watermark)", "bundled — zero setup (validated)"],
+        ["postgresql / mysql", "that dialect via Spark JDBC (distributed)", "jar bundled in the Fabric runtime — zero setup"],
+        ["oracle / db2", "default pure-Python driver-side (oracledb thin / ibm_db), self-installing; opt-in distributed JDBC via connection_json.mode=jdbc", "plug-and-play (driver pip-installs on demand — validated); JDBC mode needs the ojdbc/db2jcc jar on an Environment"],
+        ["jdbc", "any JDBC via explicit url+driver (connection_json)", "needs that driver jar on an Environment"],
+        ["odbc", "pyodbc on the driver node (modest volumes)", "needs the ODBC driver/DSN"],
+        ["rest_api", "generic REST/JSON (url/method/params/record_path in source_options_json)", "zero setup"],
+        ["statcan_wds", "Statistics Canada WDS full-table download", "zero setup (validated)"],
     ])
+    p("Driver availability — plug-and-play: SQL Server / Postgres / MySQL JDBC jars are already "
+      "in the Fabric runtime (no setup). Oracle/DB2 have no bundled driver, so the connectors "
+      "SELF-INSTALL their pure-Python driver (oracledb thin = no Oracle client; ibm_db = bundled "
+      "client) on first use — still zero manual setup, reading driver-side (modest-moderate "
+      "volumes). For DISTRIBUTED Spark JDBC on large Oracle/DB2 tables, set "
+      "connection_json.mode=jdbc and supply the jar via a Fabric Environment: uncomment the "
+      "environment block in deploy/manifest.yml and cp_bootstrap provisions+publishes it "
+      "(cp_environment.py). Jars are proprietary — operator drops them in control_plane/deploy/jars/.")
     p("source_options_json (per object) carries: query (explicit extract SQL); filters "
       "({column:value} equality filters applied AT INGEST to land a subset); select (SCHEMA "
       "SELECTION — control which columns land, their order/names/types; forms: [\"a\",\"b\"] | "

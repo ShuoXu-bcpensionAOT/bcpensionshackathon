@@ -19,6 +19,7 @@ import requests
 from dotenv import load_dotenv
 
 import cp_auth
+import cp_environment as CE
 import cp_manifest as MF
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
@@ -271,6 +272,9 @@ def main():
     wid = ensure_workspace(t, name)
     ensure_sp_admin(t, wid)                            # grant deploy SP admin (idempotent)
     ensure_lakehouses(t, wid)
+    if MF.ENVIRONMENT:                                 # opt-in driver Environment (manifest block)
+        print("provisioning driver Environment (publish takes minutes)...")
+        CE.provision(wid, MF.ENVIRONMENT)
     sqldb_id = ensure_sqldb(t, wid, MF.SQL_DATABASE)
     time.sleep(10)  # let OneLake endpoints settle
 
