@@ -1,0 +1,31 @@
+# Declarative deployment manifest — the single source of truth for what gets deployed.
+# Names only; workspace + item IDs are resolved at runtime (nothing env-specific here).
+# Adding an item = one line. Consumed by cp_deploy / cp_pipeline / cp_bootstrap.
+
+lakehouses: [metadata, bronze, silver, gold]
+sql_database: config_db
+variable_library: cp_vars
+
+# Notebooks in DEPLOY ORDER (cp_framework first; others %run it). folder = workspace subfolder.
+notebooks:
+  - { name: cp_framework,   folder: utility }
+  - { name: cp_plan,        folder: utility }
+  - { name: cp_log_fail,    folder: utility }
+  - { name: metadata_worker, folder: notebook }
+  - { name: bronze_worker,  folder: notebook }
+  - { name: silver_worker,  folder: notebook }
+  - { name: gold_runner,    folder: notebook }
+  - { name: sq_dim_category,          folder: sourcequery }
+  - { name: sq_dim_subcategory,       folder: sourcequery }
+  - { name: sq_dim_product,           folder: sourcequery }
+  - { name: sq_dim_territory,         folder: sourcequery }
+  - { name: sq_dim_customer,          folder: sourcequery }
+  - { name: sq_fact_sales_order,      folder: sourcequery }
+  - { name: sq_fact_sales_by_territory, folder: sourcequery }
+
+# Data pipelines in DEPLOY ORDER (children before main). Builders live in cp_pipeline.py.
+pipelines: [cp_pl_metadata, cp_pl_bronze, cp_pl_silver, cp_pl_gold, cp_pl_pbi, cp_pl_main]
+
+# Items to remove from every environment on deploy (superseded by the pipeline orchestration).
+superseded_notebooks: [cp_01_setup, cp_02_ingest_bronze, cp_03_build_silver,
+                       cp_04_build_gold, cp_09_orchestrate]

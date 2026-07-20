@@ -20,7 +20,7 @@ MERMAID_INIT = "%%{init: {'theme':'neutral'}}%%\n"
 DIAGRAMS = {
     "architecture": """flowchart LR
   S[(SQL Server source)]
-  T["config_db (Fabric SQL DB)\\ndatasource, source_object, dq_rule,\\nmodel, gold_object, gold_dependency,\\nsteps, pbi_dataset"]
+  T["config_db (Fabric SQL DB)\\ndatasource, source_object, dq_rule, cleanse_rule,\\nmodel, gold_object, gold_dependency,\\nsteps, pbi_dataset"]
   MAIN[[cp_pl_main per load group]]
   PLAN[cp_plan planner]
   W[workers: metadata / bronze / silver / gold]
@@ -38,7 +38,8 @@ DIAGRAMS = {
     "medallion": """flowchart LR
   SRC[(Source table)] -->|extract full/incremental| BR[bronze: raw + control cols]
   BR -->|snake_case, dedupe by key, row-hash| SV[silver curated]
-  SV -->|DQ rules| Q{pass?}
+  SV -->|cleanse rules| CL[cleansed]
+  CL -->|DQ rules| Q{pass?}
   Q -->|fail error rule| QT[quarantine_target]
   Q -->|pass| SVT[silver table]
   SVT -->|source-query sq_*| ST[stage_*]
@@ -272,6 +273,25 @@ def main():
     p('Example (T-SQL):  INSERT INTO dbo.dq_rule (rule_id, object_id, column_name, rule_type, '
       "min_value, severity, is_active) VALUES "
       "('soh_total_due_nonneg','sales_order_header','total_due','min',0,'error',1);")
+    h("4.3b cleanse_rule — cleansing (transform) rules", 2)
+    p("Cleansing FIXES rows on silver and runs BEFORE DQ validation, in apply_order. "
+      "columns is a semicolon-separated list of SILVER (snake_case) columns; parameters_json "
+      "holds the function params. Extensible at runtime via register_cleanse_function(). "
+      "Cleanse fixes; DQ validates — cleansing runs first, then error-severity DQ rules "
+      "quarantine whatever is still bad.")
+    table(["function", "Params", "Effect"], [
+        ["trim", "—", "trim whitespace"],
+        ["normalize_text", "case (lower/upper/title), collapse_spaces, empty_as_null", "trim + collapse spaces + case + \"\"→null"],
+        ["fill_nulls", "default", "replace null with default"],
+        ["parse_datetime", "target_type (date/timestamp), formats [..], into", "parse string to date/timestamp (first matching format)"],
+        ["to_upper / to_lower / to_title", "—", "casing"],
+        ["replace", "pattern, replacement", "regex replace"],
+    ])
+    p("function and columns are T-SQL reserved words — bracket-quote them ([function], [columns]).")
+    p('Example (T-SQL):  INSERT INTO dbo.cleanse_rule (rule_id, object_id, [function], [columns], '
+      "parameters_json, apply_order, is_active) VALUES "
+      "('person_names_title','person','normalize_text','first_name;last_name',"
+      "'{\"case\":\"title\",\"collapse_spaces\":true,\"empty_as_null\":true}',1,1);")
     h("4.4 model — gold data models", 2)
     table(["Column", "Notes"], [["model_id (PK)", ""], ["model_name", "e.g. sales_star"],
                                  ["load_group", "gold-phase load group"], ["is_active", "BIT"]])

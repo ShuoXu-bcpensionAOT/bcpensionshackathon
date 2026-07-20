@@ -29,8 +29,8 @@ def _clean(cols, row):
 
 
 def _fetch(cur, table):
-    cur.execute(f"SELECT {','.join(S.COLUMNS[table])} FROM dbo.{table} "
-                f"ORDER BY {S.ORDER_BY[table]}")
+    collist = ",".join(f"[{c}]" for c in S.COLUMNS[table])   # bracket-quote (reserved words)
+    cur.execute(f"SELECT {collist} FROM dbo.{table} ORDER BY {S.ORDER_BY[table]}")
     cols = [d[0] for d in cur.description]
     return [_clean(cols, row) for row in cur.fetchall()]
 
@@ -50,6 +50,7 @@ def main():
     _dump(C.CONFIG_DIR / "datasource.yml", _fetch(cur, "datasource"))
     _dump(C.CONFIG_DIR / "source_object.yml", _fetch(cur, "source_object"))
     _dump(C.CONFIG_DIR / "dq_rule.yml", _fetch(cur, "dq_rule"))
+    _dump(C.CONFIG_DIR / "cleanse_rule.yml", _fetch(cur, "cleanse_rule"))
     _dump(C.CONFIG_DIR / "gold_model.yml", {
         "model": _fetch(cur, "model"),
         "gold_object": _fetch(cur, "gold_object"),

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import fabric_nb as FN
 import cp_common as C
+import cp_manifest as MF
 
 
 def _with_source_creds(params):
@@ -19,12 +20,8 @@ def _with_source_creds(params):
     return params
 
 NB_DIR = C.REPO / "control_plane" / "notebooks"
-# deploy order: framework first (others %run it). Pipeline-orchestrated worker set.
-SQ = ["sq_dim_category", "sq_dim_subcategory", "sq_dim_product", "sq_dim_territory",
-      "sq_dim_customer", "sq_fact_sales_order", "sq_fact_sales_by_territory"]
-WORKERS = ["cp_plan", "cp_log_fail", "metadata_worker", "bronze_worker",
-           "silver_worker", "gold_runner"]
-ORDER = ["cp_framework", *WORKERS, *SQ]
+# Deploy order comes from the manifest (framework first; others %run it).
+ORDER = MF.NOTEBOOK_ORDER
 
 
 def source_cells(name):

@@ -23,6 +23,7 @@ def main():
         "model": gm.get("model", []),
         "source_object": _load("source_object.yml"),
         "dq_rule": _load("dq_rule.yml"),
+        "cleanse_rule": _load("cleanse_rule.yml"),
         "gold_object": gm.get("gold_object", []),
         "gold_dependency": gm.get("gold_dependency", []),
         "steps": _load("steps.yml"),
@@ -40,8 +41,9 @@ def main():
         cols = S.COLUMNS[t]
         rows = data[t]
         ph = ",".join(["?"] * len(cols))
+        collist = ",".join(f"[{c}]" for c in cols)   # bracket-quote (reserved words)
         for r in rows:
-            cur.execute(f"INSERT INTO dbo.{t} ({','.join(cols)}) VALUES ({ph})",
+            cur.execute(f"INSERT INTO dbo.{t} ({collist}) VALUES ({ph})",
                         *[r.get(c) for c in cols])
         print(f"  + {t:<16} {len(rows)} row(s)")
     cn.commit()

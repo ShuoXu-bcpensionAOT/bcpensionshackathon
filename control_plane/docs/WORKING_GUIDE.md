@@ -81,7 +81,8 @@ flowchart LR
 flowchart LR
   SRC[(Source table)] -->|extract full / incremental| BR[bronze<br/>raw + control cols]
   BR -->|snake_case · dedupe by key · row-hash| SV[silver<br/>curated]
-  SV -->|DQ rules| Q{pass?}
+  SV -->|cleanse rules| CL[cleansed]
+  CL -->|DQ rules| Q{pass?}
   Q -- fail error rule --> QT[quarantine_&lt;target&gt;]
   Q -- pass --> SVT[silver table]
   SVT -->|source-query sq_*| ST[stage_*]
@@ -278,6 +279,42 @@ INSERT INTO dbo.dq_rule (rule_id, object_id, column_name, rule_type, allowed_val
 VALUES ('person_type_allowed','person','person_type','allowed_values','["EM","IN","SP","SC","VC","GC"]','error',1);
 ```
 
+### 4.3b `cleanse_rule` — cleansing (transform) rules
+
+Cleansing **fixes** rows on silver, applied **before** DQ validation (in `apply_order`).
+`columns` is a semicolon-separated list of SILVER (snake_case) columns; `parameters_json`
+holds function params. Extensible via `register_cleanse_function()`.
+
+| Column | Notes |
+|--------|-------|
+| `rule_id` (PK) | unique |
+| `object_id` (FK) | → source_object |
+| `function` | **`trim` · `normalize_text` · `fill_nulls` · `parse_datetime` · `to_upper` · `to_lower` · `to_title` · `replace`** |
+| `columns` | `col1;col2` (silver snake_case) |
+| `parameters_json` | function params (JSON) |
+| `apply_order` | INT — order of application |
+| `is_active` | BIT |
+
+**Functions & params**
+
+| `function` | Params | Effect |
+|-----------|--------|--------|
+| `trim` | — | trim whitespace |
+| `normalize_text` | `case` (lower/upper/title), `collapse_spaces`, `empty_as_null` | trim + collapse spaces + case + ""→null |
+| `fill_nulls` | `default` | replace null with default |
+| `parse_datetime` | `target_type` (date/timestamp), `formats` [..], `into`, | parse string to date/timestamp (first matching format) |
+| `to_upper` / `to_lower` / `to_title` | — | casing |
+| `replace` | `pattern`, `replacement` | regex replace |
+
+Example (T-SQL):
+```sql
+INSERT INTO dbo.cleanse_rule (rule_id, object_id, [function], [columns], parameters_json, apply_order, is_active)
+VALUES ('person_names_title','person','normalize_text','first_name;last_name',
+        '{"case":"title","collapse_spaces":true,"empty_as_null":true}',1,1);
+```
+> `function` and `columns` are T-SQL reserved words — bracket-quote them (`[function]`, `[columns]`).
+> **Cleanse fixes; DQ validates.** Cleansing runs first, then error-severity DQ rules quarantine what's still bad.
+
 ### 4.4 `model` — gold data models
 | Column | Type | Notes |
 |--------|------|-------|
@@ -378,6 +415,14 @@ flowchart LR
   CI --> CFG[load config-as-code]
 ```
 
+
+**Manifest-driven deploy (`deploy/manifest.yml`):** one declarative inventory — *names only,
+IDs resolved at runtime* — drives the whole deploy. It lists the `lakehouses`, `sql_database`,
+`variable_library`, `notebooks` (each `{name, folder}`, in deploy order — framework first,
+others `%run` it), `pipelines` (children before `cp_pl_main`), and `superseded_notebooks`
+(pruned from every environment). `cp_manifest.py` loads it (standalone, no side effects) and
+feeds `cp_bootstrap` / `cp_deploy` / `cp_pipeline`, so adding a notebook/pipeline or changing
+folder layout is a one-line manifest edit — no code change.
 
 - Items (notebooks/pipelines/lakehouses/variable library) deploy per environment via the
   bootstrap or CI/CD; naming is `<workspace_base>-<environment>` (e.g. `HackathonShuo-UAT`).

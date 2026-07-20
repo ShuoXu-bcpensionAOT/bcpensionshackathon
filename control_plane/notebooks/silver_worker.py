@@ -51,6 +51,11 @@ def work():
         sdf = sdf.withColumn("_rn", F.row_number().over(w)).where(F.col("_rn") == 1).drop("_rn")
     sdf = sdf.drop("_bronze_ingest_ts")
 
+    # cleanse (fix rows) BEFORE DQ validation (quarantine)
+    crules = config_query(
+        "SELECT * FROM dbo.cleanse_rule WHERE object_id=? AND is_active=1 ORDER BY apply_order", (oid,))
+    sdf = apply_cleansing(sdf, crules)
+
     colmap = {c: F.col(c) for c in sdf.columns}
     rules = config_query("SELECT * FROM dbo.dq_rule WHERE object_id=? AND is_active=1", (oid,))
     pass_all = F.lit(True)

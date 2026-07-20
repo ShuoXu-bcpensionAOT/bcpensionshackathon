@@ -1,0 +1,24 @@
+# Cleansing rules applied on silver (per object, in apply_order) BEFORE DQ validation.
+# function: trim | normalize_text | fill_nulls | parse_datetime | to_upper | to_lower | to_title | replace
+# columns: semicolon-separated SILVER column names (snake_case). parameters_json: function params.
+- rule_id: person_names_title
+  object_id: person
+  function: normalize_text
+  columns: first_name;last_name
+  parameters_json: '{"case":"title","collapse_spaces":true,"empty_as_null":true}'
+  apply_order: 1
+  is_active: true
+- rule_id: person_middle_fill
+  object_id: person
+  function: fill_nulls
+  columns: middle_name
+  parameters_json: '{"default":"N/A"}'
+  apply_order: 2
+  is_active: true
+- rule_id: product_color_upper
+  object_id: product
+  function: to_upper
+  columns: color
+  parameters_json: null
+  apply_order: 1
+  is_active: true

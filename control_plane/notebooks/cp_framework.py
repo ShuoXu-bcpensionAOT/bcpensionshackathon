@@ -146,6 +146,97 @@ def config_query(sql, params=()):
     return rows
 
 
+# --- cleansing (transform) functions — applied on silver, config-driven, registry-extensible ---
+def _cf_trim(df, cols, p):
+    for c in cols:
+        if c in df.columns:
+            df = df.withColumn(c, F.trim(F.col(c).cast("string")))
+    return df
+
+
+def _cf_normalize_text(df, cols, p):
+    case = p.get("case")
+    for c in cols:
+        if c not in df.columns:
+            continue
+        col = F.trim(F.col(c).cast("string"))
+        if p.get("collapse_spaces", True):
+            col = F.regexp_replace(col, r"\s+", " ")
+        if case == "lower":
+            col = F.lower(col)
+        elif case == "upper":
+            col = F.upper(col)
+        elif case == "title":
+            col = F.initcap(col)
+        if p.get("empty_as_null", True):
+            col = F.when(col == "", None).otherwise(col)
+        df = df.withColumn(c, col)
+    return df
+
+
+def _cf_fill_nulls(df, cols, p):
+    default = p.get("default", p.get("value"))
+    for c in cols:
+        if c in df.columns:
+            df = df.withColumn(c, F.coalesce(F.col(c), F.lit(default)))
+    return df
+
+
+def _cf_parse_datetime(df, cols, p):
+    conv = F.to_date if p.get("target_type", "date") == "date" else F.to_timestamp
+    formats = p.get("formats", ["yyyy-MM-dd"])
+    for c in cols:
+        if c not in df.columns:
+            continue
+        parsed = F.lit(None)
+        for fmt in formats:
+            parsed = F.coalesce(parsed, conv(F.col(c).cast("string"), fmt))
+        df = df.withColumn(p.get("into") or c, parsed)
+    return df
+
+
+def _cf_case(fn):
+    def apply(df, cols, p):
+        for c in cols:
+            if c in df.columns:
+                df = df.withColumn(c, fn(F.col(c).cast("string")))
+        return df
+    return apply
+
+
+def _cf_replace(df, cols, p):
+    for c in cols:
+        if c in df.columns:
+            df = df.withColumn(c, F.regexp_replace(F.col(c).cast("string"),
+                                                   p.get("pattern", ""), p.get("replacement", "")))
+    return df
+
+
+CLEANSE_FUNCS = {
+    "trim": _cf_trim, "normalize_text": _cf_normalize_text, "fill_nulls": _cf_fill_nulls,
+    "parse_datetime": _cf_parse_datetime, "replace": _cf_replace,
+    "to_upper": _cf_case(F.upper), "to_lower": _cf_case(F.lower), "to_title": _cf_case(F.initcap),
+}
+
+
+def register_cleanse_function(name, fn):
+    """Extend the cleansing library (fn signature: (df, cols:list, params:dict) -> df)."""
+    CLEANSE_FUNCS[name] = fn
+
+
+def apply_cleansing(df, rules):
+    """Apply active cleanse rules (list of dicts) in apply_order. Ignores unknown functions."""
+    import json
+    for r in sorted(rules, key=lambda x: (x.get("apply_order") or 0)):
+        fn = CLEANSE_FUNCS.get(r.get("function"))
+        if not fn:
+            continue
+        cols = [c.strip() for c in str(r.get("columns") or "").split(";") if c.strip()]
+        params = json.loads(r["parameters_json"]) if r.get("parameters_json") else {}
+        df = fn(df, cols, params)
+    return df
+
+
 def write_path(df, path, mode="overwrite"):
     w = df.write.format("delta").mode(mode)
     w = w.option("overwriteSchema", "true") if mode == "overwrite" else w.option("mergeSchema", "true")

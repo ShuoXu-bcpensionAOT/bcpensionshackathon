@@ -12,6 +12,7 @@ import requests
 
 import cp_common as C
 import fabric_nb as FN
+import cp_manifest as MF
 
 API = FN.API
 
@@ -262,7 +263,7 @@ BUILDERS = {
 
 if __name__ == "__main__":
     tok = FN.token()
-    names = sys.argv[1:] or list(BUILDERS)
+    names = sys.argv[1:] or MF.PIPELINES          # manifest order (children before main)
     for name in names:
         if name in BUILDERS:
             print(f"deployed {name}:", deploy_pipeline(tok, name, BUILDERS[name](tok)))

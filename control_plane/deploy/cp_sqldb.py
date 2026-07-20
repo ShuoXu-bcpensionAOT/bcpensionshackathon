@@ -35,6 +35,11 @@ DDL = [
         column_name NVARCHAR(128), rule_type NVARCHAR(50), allowed_values_json NVARCHAR(MAX),
         min_value FLOAT, max_value FLOAT, rule_expression NVARCHAR(MAX),
         severity NVARCHAR(50), is_active BIT)"""),
+    ("cleanse_rule", """CREATE TABLE dbo.cleanse_rule(
+        rule_id NVARCHAR(128) PRIMARY KEY,
+        object_id NVARCHAR(128) REFERENCES dbo.source_object(object_id),
+        [function] NVARCHAR(50), [columns] NVARCHAR(MAX), parameters_json NVARCHAR(MAX),
+        apply_order INT, is_active BIT)"""),
     ("gold_object", """CREATE TABLE dbo.gold_object(
         gold_object_id NVARCHAR(128) PRIMARY KEY,
         model_id INT REFERENCES dbo.model(model_id),
@@ -61,6 +66,8 @@ COLUMNS = {
                       "is_active", "processing_state"],
     "dq_rule": ["rule_id", "object_id", "column_name", "rule_type", "allowed_values_json",
                 "min_value", "max_value", "rule_expression", "severity", "is_active"],
+    "cleanse_rule": ["rule_id", "object_id", "function", "columns", "parameters_json",
+                     "apply_order", "is_active"],
     "gold_object": ["gold_object_id", "model_id", "gold_type", "stage_table", "gold_table",
                     "business_key_columns_json", "source_query_notebook", "is_active"],
     "gold_dependency": ["parent_gold_object_id", "child_gold_object_id"],
@@ -74,6 +81,7 @@ ORDER_BY = {
     "model": "model_id",
     "source_object": "object_id",
     "dq_rule": "rule_id",
+    "cleanse_rule": "object_id, apply_order",
     "gold_object": "gold_object_id",
     "gold_dependency": "parent_gold_object_id, child_gold_object_id",
     "steps": "load_group, step_order",
@@ -108,7 +116,9 @@ def connect(retries=4):
             return pyodbc.connect(cs, attrs_before={SQL_COPT_SS_ACCESS_TOKEN: ts}, timeout=90)
         except pyodbc.Error as e:
             last = e
-            if any(s in str(e) for s in ("08001", "timeout", "Timeout", "258")):
+            # transient: login timeout (08001/258) or DB resuming from pause (40613)
+            if any(s in str(e) for s in ("08001", "timeout", "Timeout", "258",
+                                         "40613", "not currently available")):
                 time.sleep(20)
                 continue
             raise

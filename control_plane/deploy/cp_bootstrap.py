@@ -17,13 +17,15 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+import cp_manifest as MF
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 TENANT = os.getenv("AZURE_TENANT_ID")
 API = "https://api.fabric.microsoft.com/v1"
 CAPACITY_ID = os.getenv("CP_CAPACITY_ID", "42092329-66a5-4754-93df-fb5cb58fa305")
 SCRIPTS = Path(__file__).resolve().parent
-LAKEHOUSES = ["metadata", "bronze", "silver", "gold"]
+LAKEHOUSES = MF.LAKEHOUSES
 
 
 def token(resource="https://api.fabric.microsoft.com"):
@@ -146,9 +148,8 @@ def move_pipelines(t, wid):
     print(f"  moved {len(items)} pipeline(s) into 'pipeline' folder")
 
 
-# Superseded by the pipeline orchestration — removed from every environment on deploy.
-SUPERSEDED_NOTEBOOKS = ["cp_01_setup", "cp_02_ingest_bronze", "cp_03_build_silver",
-                        "cp_04_build_gold", "cp_09_orchestrate"]
+# Superseded notebooks (from the manifest) — removed from every environment on deploy.
+SUPERSEDED_NOTEBOOKS = MF.SUPERSEDED_NOTEBOOKS
 
 
 def remove_superseded(t, wid):
@@ -161,20 +162,16 @@ def remove_superseded(t, wid):
             print(f"  removed superseded notebook: {n}")
 
 
-# notebook -> subfolder placement (keeps deploys tidy across environments)
-NB_FOLDERS = {
-    "utility": ["cp_framework", "cp_plan", "cp_log_fail"],
-    "sourcequery": ["sq_dim_category", "sq_dim_subcategory", "sq_dim_product", "sq_dim_territory",
-                    "sq_dim_customer", "sq_fact_sales_order", "sq_fact_sales_by_territory"],
-    "notebook": ["metadata_worker", "bronze_worker", "silver_worker", "gold_runner"],
-}
+# notebook -> subfolder placement (from the manifest; keeps deploys tidy across envs)
+NB_FOLDERS = MF.NB_FOLDERS
 
 
 def organize_notebooks(t, wid):
     nbf = ensure_folder(t, wid, "notebook")
-    fmap = {"notebook": nbf,
-            "utility": ensure_folder(t, wid, "utility", nbf),
-            "sourcequery": ensure_folder(t, wid, "sourcequery", nbf)}
+    fmap = {"notebook": nbf}
+    for folder in NB_FOLDERS:                       # subfolders derived from the manifest
+        if folder != "notebook":
+            fmap[folder] = ensure_folder(t, wid, folder, nbf)
     items = {i["displayName"]: i["id"] for i in
              requests.get(f"{API}/workspaces/{wid}/items", headers=H(t)).json()["value"]
              if i["type"] == "Notebook"}
@@ -203,7 +200,7 @@ def main():
     t = token()
     wid = ensure_workspace(t, name)
     ensure_lakehouses(t, wid)
-    sqldb_id = ensure_sqldb(t, wid)
+    sqldb_id = ensure_sqldb(t, wid, MF.SQL_DATABASE)
     time.sleep(10)  # let OneLake endpoints settle
 
     envset = {"CP_TARGET_WORKSPACE": name, "CP_TARGET_WORKSPACE_ID": wid}
