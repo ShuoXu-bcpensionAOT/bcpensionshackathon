@@ -55,19 +55,62 @@ def wait_lro(resp, t):
     return resp
 
 
+# Shown when the SP is not permitted to create a workspace (tenant setting off).
+WORKSPACE_CREATE_HELP = """
+  ------------------------------------------------------------------------------
+  The service principal is NOT permitted to CREATE workspaces (Fabric returns 401).
+  This is a tenant-level setting, separate from workspace access. To fix, EITHER:
+    A) A Fabric/Power BI admin enables the tenant setting
+       'Service principals can create workspaces, connections, and deployment
+       pipelines' (Admin portal > Tenant settings > Developer settings) and adds
+       this SP to the allowed security group — then the SP self-provisions. This
+       same setting also unblocks creating the config_db connection (native SQL
+       Lookups).  [preferred, revisit once permission allows]
+    B) Pre-create the workspace as a user: re-run with CP_PROVISION_AS_USER=1 so
+       the workspace + capacity assignment + SP-admin grant happen under your az
+       login, then the SP takes over the rest of the deploy.
+  ------------------------------------------------------------------------------"""
+
+
+def _user_token(resource="https://api.fabric.microsoft.com"):
+    """Personal az (human) token — bypasses cp_auth's SP path. Used only to seed a
+    workspace when the SP itself may not create one (CP_PROVISION_AS_USER)."""
+    cmd = ["az", "account", "get-access-token", "--resource", resource,
+           "--query", "accessToken", "-o", "tsv"]
+    if TENANT:
+        cmd[3:3] = ["--tenant", TENANT]
+    out = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+    if out.returncode or not out.stdout.strip():
+        sys.exit(f"az user token error: {out.stderr.strip()}")
+    return out.stdout.strip()
+
+
 def ensure_workspace(t, name):
     for w in requests.get(f"{API}/workspaces", headers=H(t)).json()["value"]:
         if w["displayName"] == name:
             print(f"workspace exists: {name} ({w['id']})")
             return w["id"]
+    ct = t                                              # token used for create + capacity
     r = requests.post(f"{API}/workspaces", headers=H(t), json={"displayName": name})
+    if r.status_code in (401, 403):                     # SP not allowed to create workspaces
+        print(WORKSPACE_CREATE_HELP)
+        if os.getenv("CP_PROVISION_AS_USER", "").lower() not in ("1", "true", "yes"):
+            sys.exit("create workspace failed: SP not permitted. Set CP_PROVISION_AS_USER=1 "
+                     "to provision as your az user, or enable the tenant setting (A above).")
+        print("  CP_PROVISION_AS_USER set — creating workspace with your az login")
+        ct = _user_token()
+        r = requests.post(f"{API}/workspaces", headers=H(ct), json={"displayName": name})
     if r.status_code not in (200, 201):
         sys.exit(f"create workspace failed: {r.text}")
     wid = r.json()["id"]
-    a = requests.post(f"{API}/workspaces/{wid}/assignToCapacity", headers=H(t),
+    a = requests.post(f"{API}/workspaces/{wid}/assignToCapacity", headers=H(ct),
                       json={"capacityId": CAPACITY_ID})
-    wait_lro(a, t)
+    wait_lro(a, ct)
     print(f"created workspace {name} ({wid}) on trial capacity")
+    if ct is not t:                                     # user-provisioned: grant SP access now
+        ensure_sp_admin(ct, wid)                        # under the human token
+        print("  waiting for SP role to propagate…")
+        time.sleep(20)
     return wid
 
 
