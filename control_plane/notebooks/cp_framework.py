@@ -456,46 +456,58 @@ def _ic_odbc(o, user, password):
     return spark.createDataFrame(rows, cols)           # noqa: F821
 
 
-def _ic_rest_api(o, user, password):
-    """Generic REST/JSON connector. source_options_json: url, method, headers, params, body,
-    record_path (dot-path to the list of records). connection_json may hold base headers."""
-    import requests
-    import pandas as pd
-    c, opts = _conn(o), _opts(o)
-    url = opts.get("url") or c.get("base_url")
-    resp = requests.request((opts.get("method") or "GET").upper(), url,
-                            headers={**c.get("headers", {}), **opts.get("headers", {})},
-                            params=opts.get("params"), json=opts.get("body"), timeout=120)
-    resp.raise_for_status()
-    data = resp.json()
-    for key in [k for k in (opts.get("record_path") or "").split(".") if k]:
-        data = data[key]
-    if isinstance(data, dict):
-        data = [data]
-    pdf = pd.json_normalize(data)
-    pdf.columns = [re.sub(r"[^A-Za-z0-9_]", "_", str(x)) for x in pdf.columns]
-    pdf = pdf.where(pd.notnull(pdf), None)
-    return spark.createDataFrame(pdf)                  # noqa: F821
+def _dig(obj, path):
+    """Follow a dot-path (e.g. 'a.b.0') into nested JSON/lists."""
+    for k in [x for x in str(path or "").split(".") if x]:
+        obj = obj[int(k)] if isinstance(obj, list) else obj[k]
+    return obj
 
 
-def _ic_statcan_wds(o, user, password):
-    """Statistics Canada WDS full-table download (getFullTableDownloadCSV -> zip -> CSV).
-    source_options_json: {table_id, language(en/fr), filters:{<original column>:<value>}}.
-    Equality filters (on ORIGINAL column names) are applied at ingest to land a subset."""
+def _ic_http(o, user, password):
+    """Generalized HTTP/API connector (one connector for ALL APIs — like a Data Factory HTTP
+    linked service + dataset). Connection (KV secret / connection_json): base_url, headers/auth.
+    Request (source_options_json):
+       url | path        endpoint; may template {name} from `params` (e.g. .../{table_id}/{language})
+       method            GET (default) / POST / ...
+       params            values for URL templating AND query string
+       query             extra query params (dict)
+       body              JSON request body
+       headers           per-request headers (merged over connection headers)
+       response          how to turn the response into rows:
+           {type:"json", record_path:"a.b"}          JSON -> list of records
+           {type:"csv"}                               response body IS a CSV
+           {type:"zip_csv", url_field:"object",       response JSON has a URL field pointing to a
+                            member:<regex>|null,       ZIP; download it and read the CSV member
+                            exclude:"_Meta"}           (StatCan WDS pattern)
+       filters           {col:value} equality filters at ingest (ORIGINAL column names)
+    """
     import requests
-    import zipfile
     import io
     import pandas as pd
-    opts = _opts(o)
-    table_id, lang = str(opts["table_id"]), opts.get("language", "en")
-    meta = requests.get(
-        f"https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/{table_id}/{lang}",
-        timeout=60).json()
-    if str(meta.get("status")).upper() != "SUCCESS":
-        raise Exception(f"StatCan WDS error for table {table_id}: {meta}")
-    zf = zipfile.ZipFile(io.BytesIO(requests.get(meta["object"], timeout=600).content))
-    csv_name = [f for f in zf.namelist() if "_Meta" not in f and f.lower().endswith(".csv")][0]
-    pdf = pd.read_csv(zf.open(csv_name), low_memory=False, dtype=str)
+    c, opts = _resolve_conn(o), _opts(o)
+    params = opts.get("params", {})
+    url = (opts.get("url") or (c.get("base_url", "") + opts.get("path", ""))).format(**params)
+    headers = {**c.get("headers", {}), **opts.get("headers", {})}
+    resp = requests.request((opts.get("method") or "GET").upper(), url, headers=headers,
+                            params=opts.get("query"), json=opts.get("body"), timeout=120)
+    resp.raise_for_status()
+
+    r = opts.get("response") or {"type": "json"}
+    rtype = r.get("type", "json")
+    if rtype == "csv":
+        pdf = pd.read_csv(io.BytesIO(resp.content), dtype=str, low_memory=False)
+    elif rtype == "zip_csv":                            # follow a JSON pointer to a zip of CSVs
+        import zipfile
+        zurl = _dig(resp.json(), r.get("url_field", "object"))
+        zf = zipfile.ZipFile(io.BytesIO(requests.get(zurl, timeout=600).content))
+        member, excl = r.get("member"), r.get("exclude", "_Meta")
+        names = [f for f in zf.namelist() if f.lower().endswith(".csv")
+                 and (re.search(member, f) if member else (not excl or excl not in f))]
+        pdf = pd.read_csv(zf.open(names[0]), dtype=str, low_memory=False)
+    else:                                               # json
+        data = _dig(resp.json(), r.get("record_path"))
+        pdf = pd.json_normalize([data] if isinstance(data, dict) else data)
+
     for col, val in (opts.get("filters") or {}).items():
         if col in pdf.columns:
             pdf = pdf[pdf[col].astype(str).str.strip() == str(val)]
@@ -576,7 +588,9 @@ INGEST_CONNECTORS = {
     "sqlserver": _ic_jdbc, "postgresql": _ic_jdbc, "mysql": _ic_jdbc, "jdbc": _ic_jdbc,
     # not bundled -> pure-Python driver-side by default (self-installing), JDBC via mode='jdbc'
     "oracle": _ic_oracle, "db2": _ic_db2,
-    "odbc": _ic_odbc, "rest_api": _ic_rest_api, "statcan_wds": _ic_statcan_wds,
+    # ONE generalized HTTP connector for every API — differ only by parameters (like ADF's HTTP
+    # connector). statcan_wds is just an http profile (zip_csv response) + its discoverer.
+    "odbc": _ic_odbc, "http": _ic_http, "rest_api": _ic_http, "api": _ic_http, "statcan_wds": _ic_http,
 }
 # connectors that support metadata schema discovery (INFORMATION_SCHEMA over JDBC)
 DISCOVERABLE_CONNECTORS = {"sqlserver", "oracle", "db2", "postgresql", "mysql", "jdbc"}
@@ -666,13 +680,18 @@ def _discover_sqlserver(ds):
 
 
 def _discover_statcan(ds):
-    """Materialize one object per table_id declared at the datasource (connection_json.tables)."""
+    """Materialize one object per table_id declared at the datasource (connection_json.tables),
+    seeded with GENERIC http params (the same _ic_http serves it — StatCan is just a zip_csv
+    profile). The user then adds filters/select and activates."""
     out = []
     for t in _conn(ds).get("tables", []):
         out.append({"source_schema": None, "source_table": t.get("name") or str(t["table_id"]),
                     "key_columns_json": json.dumps(["REF_DATE", "VECTOR"]),
-                    "source_options_json": json.dumps({"table_id": str(t["table_id"]),
-                                                       "language": t.get("language", "en")})})
+                    "source_options_json": json.dumps({
+                        "url": "https://www150.statcan.gc.ca/t1/wds/rest/"
+                               "getFullTableDownloadCSV/{table_id}/{language}",
+                        "params": {"table_id": str(t["table_id"]), "language": t.get("language", "en")},
+                        "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}})})
     return out
 
 

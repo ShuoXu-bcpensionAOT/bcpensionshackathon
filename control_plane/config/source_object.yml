@@ -107,9 +107,11 @@
   key_columns_json: '["REF_DATE", "VECTOR"]'
   is_active: true
   processing_state: ACTIVE
-  source_options_json: '{"table_id": "14100287", "language": "en", "filters": {"GEO":
-    "British Columbia", "Gender": "Total - Gender", "Statistics": "Estimate", "Data
-    type": "Seasonally adjusted"}, "select": {"columns": ["REF_DATE", "GEO", "Labour_force_characteristics",
+  source_options_json: '{"url": "https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/{table_id}/{language}",
+    "params": {"table_id": "14100287", "language": "en"}, "response": {"type": "zip_csv",
+    "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia",
+    "Gender": "Total - Gender", "Statistics": "Estimate", "Data type": "Seasonally
+    adjusted"}, "select": {"columns": ["REF_DATE", "GEO", "Labour_force_characteristics",
     "Age_group", "Gender", "Statistics", "Data_type", "VECTOR", "COORDINATE", "VALUE",
     "UOM"], "cast": {"VALUE": "double"}}}'
   suffix: bc
