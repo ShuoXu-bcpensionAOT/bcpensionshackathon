@@ -62,44 +62,49 @@ automatically on any existing `config_db` (idempotent `ALTER … ADD`):
 Run these in the Fabric **`config_db`** SQL query editor (or via `cp_config` from YAML). Idempotent:
 the deletes let you re-run safely.
 
-> **You do NOT hand-author objects.** `source_object` rows are **auto-discovered** by the metadata
-> step. You (1) register the *datasource* (declaring which table(s) it covers), (2) run discovery,
-> which materializes the `source_object` as `is_active=0`, then (3) tweak it (filters/select) and
-> activate it. `source_id` is also auto-assigned (`IDENTITY`) — never pick it by hand.
+> **The connection lives in Key Vault — for APIs too.** Every source (DB *or* API) puts its
+> connection in a KV secret and the datasource points at it with `secret_name`. StatCan uses the
+> **generalized `http` connector** (not a StatCan-specific connector), and `source_options` holds
+> the *request* (path/params/response). `source_id` is auto-assigned (`IDENTITY`) — never pick it.
 
-**Step 3.1 — register the datasource** (declares the table_id(s) in `connection_json.tables`; no `source_id`):
+**Step 3.1 — put the API connection in Key Vault** (the base URL; add `headers` for a private API).
+Build it with `cp_connection_builder` (pick **http**) or the CLI:
+```bash
+az keyvault secret set --vault-name kv-fabric-cc --name statcan-http \
+  --value '{"base_url":"https://www150.statcan.gc.ca/t1/wds/rest"}'
+```
+
+**Step 3.2 — register the datasource** — generalized `http` connector, connection **by secret name**
+(no `connection_json`, no custom connector):
 ```sql
 DELETE FROM dbo.datasource WHERE source_name = 'stats_can';   -- safe re-run
 INSERT INTO dbo.datasource
-  (source_name, source_type, database_name, load_group, ingestion_mode, is_active, connector, connection_json)
+  (source_name, source_type, load_group, ingestion_mode, is_active, connector, secret_name)
 VALUES
-  ('stats_can', 'API', NULL, 2, 'api', 1, 'statcan_wds',
-   '{"tables":[{"table_id":"14100287","name":"labour_force"}]}');
+  ('stats_can', 'API', 2, 'api', 1, 'http', 'statcan-http');
 ```
-(For a SQL Server source you'd instead set `secret_name` to a Key Vault secret holding the
-connection — see §10 — and declare nothing; discovery enumerates every table.)
 
-**Step 3.2 — discover** (materializes `source_object` rows as `is_active=0`): run the **metadata**
-pipeline once — Fabric UI: run `cp_pl_metadata` with `load_group=2` (or the whole `cp_pl_main`;
-bronze/silver will no-op while the object is inactive). Discovery creates `statcan_labour_force`
-with the derived name `stats_can_dbo_labour_force_bc` and seeded options `{table_id, language}`.
-Existing objects are never overwritten.
-
-**Step 3.3 — tweak the discovered object + activate it** (add the subset filters + schema selection,
-set the key/suffix, flip `is_active=1`):
+**Step 3.3 — register the object** — the *request* in `source_options_json`. `path` is relative to
+the secret's `base_url`; `params` fill the `{…}` templates; `response:zip_csv` handles StatCan's
+"JSON pointer → ZIP → CSV"; `filters` land the subset; `select` shapes the schema. `target_name`
+NULL → derived name (§5).
 ```sql
-UPDATE dbo.source_object
-SET key_columns_json = '["REF_DATE","VECTOR"]',
-    suffix = 'bc',
-    source_options_json = '{"url":"https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/{table_id}/{language}",
-      "params":{"table_id":"14100287","language":"en"},
-      "response":{"type":"zip_csv","url_field":"object","exclude":"_Meta"},
-      "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
-      "select":{"columns":["REF_DATE","GEO","Labour_force_characteristics","Age_group","Gender","Statistics","Data_type","VECTOR","COORDINATE","VALUE","UOM"],
-                "cast":{"VALUE":"double"}}}',
-    is_active = 1
-WHERE object_id = 'statcan_labour_force';
+DECLARE @source_id INT = (SELECT source_id FROM dbo.datasource WHERE source_name='stats_can');
+DELETE FROM dbo.source_object WHERE object_id='statcan_labour_force';
+INSERT INTO dbo.source_object
+  (object_id, source_id, source_table, load_type, key_columns_json, is_active, processing_state, suffix, source_options_json)
+VALUES ('statcan_labour_force', @source_id, 'labour_force', 'full', '["REF_DATE","VECTOR"]', 1, 'ACTIVE', 'bc',
+  '{"path":"/getFullTableDownloadCSV/{table_id}/{language}",
+    "params":{"table_id":"14100287","language":"en"},
+    "response":{"type":"zip_csv","url_field":"object","exclude":"_Meta"},
+    "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
+    "select":{"columns":["REF_DATE","GEO","Labour_force_characteristics","Age_group","Gender","Statistics","Data_type","VECTOR","COORDINATE","VALUE","UOM"],
+              "cast":{"VALUE":"double"}}}');
 ```
+> **Discovery vs. declaration:** a **SQL Server** datasource auto-discovers *every* table (the
+> metadata step registers them `is_active=0`; you then activate the ones you want). An **API** has
+> no enumerable catalog, so you *declare* the object's request as above — still no hardcoded
+> connection, still promoted as code.
 > Only objects you activate here load. Everything discovery finds stays `is_active=0` until you
 > approve it — so an API/DB source can't silently pull tables you didn't intend.
 
@@ -261,15 +266,22 @@ at a secret by name; the secret's value is the **complete connection payload** f
 -- e.g. a SQL Server source: the secret holds the whole connection, config holds only its NAME
 UPDATE dbo.datasource SET secret_name = 'source-adventureworks' WHERE source_name = 'AdventureWorks';
 ```
-The KV secret `source-adventureworks` value (JSON):
+Examples of the secret **value** per source type (built by `cp_connection_builder`):
 ```json
+// SQL Server / Postgres / MySQL / Oracle / DB2 (secret 'source-adventureworks')
 {"host":"20.63.101.180","port":1433,"database":"AdventureWorks2025","user":"dbadmin","password":"…"}
+
+// HTTP / API (secret 'statcan-http') — base URL, plus headers/auth for a PRIVATE API
+{"base_url":"https://www150.statcan.gc.ca/t1/wds/rest"}
+{"base_url":"https://api.example.com/v2", "headers":{"Authorization":"Bearer <token>"}}
 ```
-- The value may be a JSON object (as above) or a raw connection string/url. `connection_json` layers
-  non-secret overrides on top (e.g. `{"mode":"jdbc"}`).
+- **Every source type — DB and API — puts its connection in KV.** For HTTP the secret holds
+  `base_url` (+ `headers` for auth); the per-request `path`/`params`/`response` live in the object's
+  `source_options`. The value may also be a raw connection string/url. `connection_json` only layers
+  **non-secret** overrides (e.g. `{"mode":"jdbc"}`).
 - At run time the connector resolves it via `notebookutils.credentials.getSecret` using the **running
   identity** — so automated pipeline runs must execute **as the service principal** (which has KV
   *get*). The vault URL is the `cp_vars` variable `key_vault_url`.
 - **No secret value ever lands in git or config** — only the secret *name*. Writing a secret needs a
-  principal with KV *set* (your personal account; the SPN is read-only).
-- StatCan needs no credentials, so its datasource has no `secret_name`.
+  principal with KV *set* (your personal account; the SPN is read-only). Use `cp_connection_builder`
+  to generate + write the secret in the right format.

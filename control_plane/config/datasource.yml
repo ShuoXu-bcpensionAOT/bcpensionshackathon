@@ -15,5 +15,5 @@
   load_group: 2
   ingestion_mode: api
   is_active: true
-  connector: statcan_wds
-  connection_json: '{"tables": [{"table_id": "14100287", "name": "labour_force"}]}'
+  connector: http
+  secret_name: statcan-http
