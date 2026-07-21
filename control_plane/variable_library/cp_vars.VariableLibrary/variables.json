@@ -5,8 +5,6 @@
     { "name": "bronze_lakehouse", "type": "String", "value": "bronze" },
     { "name": "silver_lakehouse", "type": "String", "value": "silver" },
     { "name": "gold_lakehouse", "type": "String", "value": "gold" },
-    { "name": "source_server", "type": "String", "value": "20.63.101.180", "note": "source SQL Server host (fallback; prefer datasource.secret_name)" },
-    { "name": "source_connection", "type": "String", "value": "", "note": "Fabric Connection name for source creds (Phase 3)" },
     { "name": "key_vault_url", "type": "String", "value": "https://kv-fabric-cc.vault.azure.net/", "note": "Key Vault holding source connection secrets (datasource.secret_name)" }
   ]
 }
