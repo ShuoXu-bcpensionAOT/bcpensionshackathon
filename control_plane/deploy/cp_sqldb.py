@@ -57,6 +57,12 @@ DDL = [
     ("pbi_dataset", """CREATE TABLE dbo.pbi_dataset(
         dataset_id NVARCHAR(128) PRIMARY KEY, load_group INT, workspace_id NVARCHAR(128),
         dataset_name NVARCHAR(256), is_active BIT)"""),
+    ("security_policy", """CREATE TABLE dbo.security_policy(
+        policy_id NVARCHAR(128) PRIMARY KEY,
+        method NVARCHAR(50), lakehouse NVARCHAR(50),
+        target_schema NVARCHAR(128), target_table NVARCHAR(128),
+        [columns] NVARCHAR(MAX), predicate NVARCHAR(MAX), members_json NVARCHAR(MAX),
+        mask_function NVARCHAR(128), role_name NVARCHAR(128), is_active BIT)"""),
 ]
 LOAD_ORDER = [name for name, _ in DDL]
 COLUMNS = {
@@ -76,6 +82,9 @@ COLUMNS = {
     "gold_dependency": ["parent_gold_object_id", "child_gold_object_id"],
     "steps": ["load_group", "step_order", "step_key", "child_pipeline", "is_active"],
     "pbi_dataset": ["dataset_id", "load_group", "workspace_id", "dataset_name", "is_active"],
+    "security_policy": ["policy_id", "method", "lakehouse", "target_schema", "target_table",
+                        "columns", "predicate", "members_json", "mask_function", "role_name",
+                        "is_active"],
 }
 BOOL_COLS = {"is_active"}
 # Tables whose PK is an IDENTITY column — cp_config wraps their load in SET IDENTITY_INSERT so the
@@ -92,6 +101,7 @@ ORDER_BY = {
     "gold_dependency": "parent_gold_object_id, child_gold_object_id",
     "steps": "load_group, step_order",
     "pbi_dataset": "dataset_id",
+    "security_policy": "policy_id",
 }
 
 

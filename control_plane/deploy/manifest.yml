@@ -12,6 +12,7 @@ notebooks:
   - { name: cp_plan,        folder: utility }
   - { name: cp_log_fail,    folder: utility }
   - { name: cp_connection_builder, folder: utility }
+  - { name: cp_seed_demo,   folder: utility }
   - { name: metadata_worker, folder: notebook }
   - { name: bronze_worker,  folder: notebook }
   - { name: silver_worker,  folder: notebook }

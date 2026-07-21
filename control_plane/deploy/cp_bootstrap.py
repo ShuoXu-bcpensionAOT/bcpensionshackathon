@@ -151,9 +151,9 @@ def ensure_lakehouses(t, wid):
             print(f"  lakehouse {n} exists")
             continue
         r = requests.post(f"{API}/workspaces/{wid}/lakehouses", headers=H(t),
-                          json={"displayName": n})
+                          json={"displayName": n, "creationPayload": {"enableSchemas": True}})
         wait_lro(r, t)
-        print(f"  created lakehouse {n}")
+        print(f"  created lakehouse {n} (schema-enabled)")
 
 
 def ensure_sqldb(t, wid, name="config_db"):

@@ -58,6 +58,7 @@ def main():
     })
     _dump(C.CONFIG_DIR / "steps.yml", _fetch(cur, "steps"))
     _dump(C.CONFIG_DIR / "pbi_dataset.yml", _fetch(cur, "pbi_dataset"))
+    _dump(C.CONFIG_DIR / "security_policy.yml", _fetch(cur, "security_policy"))
     cn.close()
 
 

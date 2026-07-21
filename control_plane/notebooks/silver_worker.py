@@ -34,11 +34,12 @@ def dq_condition(rule, colmap):
 
 
 def work():
-    oid, target = o["object_id"], landed_table(o)
+    oid = o["object_id"]
+    schema, table = landed_table(o)                        # schema-enabled: (schema, table)
     keys = [snake(k) for k in json.loads(o["key_columns_json"])]
-    bp = tpath("bronze", target)
+    bp = tpath("bronze", table, schema)
     if not delta_exists(bp):
-        print(f"skip {target}: no bronze")
+        print(f"skip {schema}.{table}: no bronze")
         return
     df = read_path(bp)
     ingest_ts = df["_bronze_ingest_ts"] if "_bronze_ingest_ts" in df.columns else F.current_timestamp()
@@ -72,17 +73,18 @@ def work():
     q_cnt = bad.count()
     if q_cnt:
         write_path(bad.withColumn("_run_id", F.lit(run_id)).withColumn("_quarantined_at", F.current_timestamp()),
-                   tpath(QUAR_LH, f"quarantine_{target}"), mode="overwrite")
+                   tpath(QUAR_LH, f"quarantine_{table}", schema), mode="overwrite")
     good = row_hash(good).withColumn("_silver_run_id", F.lit(run_id)) \
                          .withColumn("_silver_updated_at", F.current_timestamp())
+    sp = tpath("silver", table, schema)
     if all(k in good.columns for k in keys):
-        merge_upsert(tpath("silver", target), good, keys)
+        merge_upsert(sp, good, keys)
     else:
-        write_path(good, tpath("silver", target), mode="overwrite")
-    s_cnt = read_path(tpath("silver", target)).count()
+        write_path(good, sp, mode="overwrite")
+    s_cnt = read_path(sp).count()
     log_object_run(run_id, oid, "silver", "SUCCEEDED", source_count=sdf.count(),
                    target_count=s_cnt, quarantine_count=q_cnt)
-    print(f"silver {target}: {s_cnt} rows, quarantined {q_cnt}")
+    print(f"silver {schema}.{table}: {s_cnt} rows, quarantined {q_cnt}")
 
 
 try:

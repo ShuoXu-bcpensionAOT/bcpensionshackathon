@@ -28,6 +28,7 @@ def main():
         "gold_dependency": gm.get("gold_dependency", []),
         "steps": _load("steps.yml"),
         "pbi_dataset": _load("pbi_dataset.yml"),
+        "security_policy": _load("security_policy.yml"),
     }
 
     cn = S.connect()

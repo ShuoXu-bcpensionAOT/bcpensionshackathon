@@ -77,9 +77,11 @@ CONTROL_COLS = {
 }
 
 
-def tpath(lh_key_or_guid, table):
+def tpath(lh_key_or_guid, table, schema="dbo"):
+    # Schema-enabled lakehouses store tables at Tables/<schema>/<table>. Control/audit tables
+    # default to the `dbo` schema; bronze/silver land under their datasource schema.
     guid = LH.get(lh_key_or_guid, lh_key_or_guid)
-    return f"abfss://{WS_ID}@onelake.dfs.fabric.microsoft.com/{guid}/Tables/{table}"
+    return f"abfss://{WS_ID}@onelake.dfs.fabric.microsoft.com/{guid}/Tables/{schema}/{table}"
 
 
 def now_ts():
@@ -97,17 +99,17 @@ def _norm_ident(s):
 
 
 def landed_table(o):
-    """The landed table name for a source object. Explicit target_name wins (back-compat);
-    otherwise derive the flat namespaced convention
-        {source_name}_{source_schema|dbo}_{source_table}[_{suffix}]
-    e.g. source 'Stats Can', schema null, table 'sales', suffix 'bc' -> stats_can_dbo_sales_bc."""
-    if o.get("target_name"):
-        return o["target_name"]
-    parts = [o.get("source_name"), (o.get("source_schema") or "dbo"), o.get("source_table")]
+    """The landed (schema, table) for a source object on a SCHEMA-ENABLED lakehouse:
+        schema = datasource (source_name)
+        table  = {source_schema|dbo}_{source_table}[_{suffix}]
+    e.g. source 'Stats Can', schema null, table 'labour_force', suffix 'bc'
+         -> ('stats_can', 'dbo_labour_force_bc')  ->  stats_can.dbo_labour_force_bc."""
+    schema = _norm_ident(o.get("source_name")) or "dbo"
+    parts = [(o.get("source_schema") or "dbo"), o.get("source_table")]
     name = "_".join(_norm_ident(p) for p in parts if p)
     if o.get("suffix"):
         name = f"{name}_{_norm_ident(o['suffix'])}"
-    return name
+    return schema, name
 
 
 def delta_exists(path):
@@ -253,9 +255,27 @@ def _cf_replace(df, cols, p):
     return df
 
 
+def _cf_mask(df, cols, p):
+    """Static masking (stored masked — enforced on EVERY engine). style: redact|hash|partial."""
+    style = p.get("style", "redact")
+    for c in cols:
+        if c not in df.columns:
+            continue
+        col = F.col(c).cast("string")
+        if style == "hash":
+            df = df.withColumn(c, F.sha2(col, 256))
+        elif style == "partial":                        # keep last N chars, e.g. ***1234
+            keep = int(p.get("keep", 4))
+            df = df.withColumn(c, F.concat(F.lit(p.get("prefix", "***")),
+                                           F.substring(col, -keep, keep)))
+        else:                                            # redact
+            df = df.withColumn(c, F.lit(p.get("replacement", "***")))
+    return df
+
+
 CLEANSE_FUNCS = {
     "trim": _cf_trim, "normalize_text": _cf_normalize_text, "fill_nulls": _cf_fill_nulls,
-    "parse_datetime": _cf_parse_datetime, "replace": _cf_replace,
+    "parse_datetime": _cf_parse_datetime, "replace": _cf_replace, "mask": _cf_mask,
     "to_upper": _cf_case(F.upper), "to_lower": _cf_case(F.lower), "to_title": _cf_case(F.initcap),
 }
 

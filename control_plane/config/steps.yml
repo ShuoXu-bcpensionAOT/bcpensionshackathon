@@ -20,7 +20,7 @@
   step_order: 4
   step_key: load_gold
   child_pipeline: cp_pl_gold
-  is_active: true
+  is_active: false
 - load_group: 1
   step_order: 5
   step_key: refresh_pbi
