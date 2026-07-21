@@ -24,11 +24,12 @@ control_plane/
 | Layer | Items |
 |-------|-------|
 | Workspace | `<workspace_base>-<environment>` on the configured capacity (created if missing) |
-| Lakehouses | `metadata`, `bronze`, `silver`, `gold` |
-| Config store | `config_db` (Fabric SQL Database) — authored config tables |
-| Variable Library | `cp_vars` (lakehouse names, source server; per-env value sets) |
-| Notebooks | `cp_framework`, `cp_plan`, `cp_log_fail`, `*_worker`, `gold_runner`, `sq_*` |
+| Lakehouses | `metadata`, `bronze`, `silver`, `gold` (**schema-enabled**) |
+| Config store | `config_db` (Fabric SQL Database) — authored config tables incl. `security_policy` |
+| Variable Library | `cp_vars` (lakehouse names, source server, `key_vault_url`; per-env value sets) |
+| Notebooks | `cp_framework`, `cp_plan`, `cp_log_fail`, `*_worker`, `gold_runner`, `sq_*`, `cp_connection_builder`, `cp_seed_demo` |
 | Data Pipelines | `cp_pl_main` + `cp_pl_{metadata,bronze,silver,gold,pbi}` (in the `pipeline` folder) |
+| Security | OneLake CLS/RLS roles + SQL-endpoint masking, applied from `security_policy` by `cp_security.py` |
 
 ## Deploy
 
@@ -63,11 +64,24 @@ Config tables in `config_db` are the **source of truth** (edit via T-SQL). Sync 
 with `cp_export_config.py` (SQL → YAML); promotion applies YAML → target `config_db`
 with `cp_config.py`. Runtime state/logs stay in the lakehouse and are never promoted.
 
+## Capabilities (all config-as-code)
+
+- **Connectors:** one registry — SQL Server / Postgres / MySQL / Oracle / DB2 / ODBC + a generalized
+  **HTTP/API** connector; add a source with config only. `datasource.connector` selects it.
+- **Connections in Key Vault:** `datasource.secret_name` → a KV secret with the full connection;
+  built by the `cp_connection_builder` wizard. `cp_auth` mints service-principal tokens; the SP
+  reads the secret at run time. Only the secret *name* is in git.
+- **Auto-discovery:** the metadata step registers `source_object` rows (`is_active=0`) from a
+  datasource — no hand-authored objects; review + activate.
+- **Governance:** `dq_rule` (quarantine), `cleanse_rule` (row fixes incl. static `mask`), and
+  `security_policy` (OneLake CLS/RLS, Dynamic Data Masking) — all promoted per environment.
+
 ## Notes / roadmap
 
-- **Config read:** pipeline planners (`cp_plan`) read `config_db` via pyodbc today.
-  When a service principal is available, switch to native pipeline **SQL Lookups**.
-- **Secrets:** source DB password is passed at run time (from a CI/secret store).
-  Key Vault integration is the planned target.
-- **Items promotion:** the bootstrap deploys all items via REST API; **fabric-cicd**
-  can replace the notebook/pipeline deploy step later if desired.
+- **Config read:** pipeline planners (`cp_plan`) read `config_db` via pyodbc (works under the
+  service principal). Native pipeline **SQL Lookups** need a Fabric data connection, which the SP
+  can't yet create via API (tenant setting) — the planner-notebook pattern is the stable path.
+- **Items promotion:** the bootstrap deploys all items via REST API (manifest-driven);
+  **fabric-cicd** can replace the notebook/pipeline deploy step later if desired.
+- **Trial capacity:** heavy full loads (bronze ForEach + the 7-notebook gold DAG) are marginal on a
+  trial SKU — provision a larger capacity for production-scale concurrency.

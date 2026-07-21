@@ -1,38 +1,41 @@
-# BCPensions Hackathon — Fabric Items
+# BCPensions — Fabric Control Plane
 
-Fabric-packaged item definitions for the **Hackathon-DEV** workspace, exported
-directly from the live workspace. This repo holds only what deploys to Fabric —
-the full MXData accelerator framework lives separately.
+A **metadata-driven lakehouse control plane** for Microsoft Fabric: declare sources, rules, models,
+and security as **config-as-code**, and deploy/run/promote them across **DEV / UAT / PROD** from git.
+Config is authored in a Fabric SQL Database and promoted as YAML; orchestration runs as Fabric Data
+Pipelines over param-driven Spark notebooks.
 
-## Contents
+## Where to look
 
-```
-workspace/
-├── bronze.Lakehouse/      # medallion lakehouses (shell items)
-├── silver.Lakehouse/
-├── gold.Lakehouse/
-├── metadata.Lakehouse/
-└── <name>.Notebook/       # imported ELT notebooks (real content)
-```
+| | |
+|---|---|
+| **[`control_plane/README.md`](control_plane/README.md)** | Start here — overview, layout, deploy/run/promote, add-a-source. |
+| **[`control_plane/docs/WORKING_GUIDE.md`](control_plane/docs/WORKING_GUIDE.md)** | Full reference: every config table, all connectors, DQ/cleanse, gold DAG, and data security (`.docx` alongside). |
+| **[`control_plane/docs/RUNBOOK_statcan.md`](control_plane/docs/RUNBOOK_statcan.md)** | Worked example: land a Statistics Canada API subset end-to-end. |
+| **[`control_plane/docs/CICD.md`](control_plane/docs/CICD.md)** | CI/CD (GitHub Actions + Azure DevOps), service-principal auth, Key Vault. |
+| **[`control_plane/SOLUTION.md`](control_plane/SOLUTION.md)** | Packaged-solution summary + roadmap. |
 
-Each folder is a [fabric-cicd](https://microsoft.github.io/fabric-cicd/)-compatible
-item definition (`.platform` + content), so the workspace can be re-deployed
-from git.
+## Highlights
 
-## Status
+- **Pluggable connectors** — SQL Server / Postgres / MySQL / Oracle / DB2 / ODBC and one generalized
+  **HTTP/API** connector; add a source with config only.
+- **Connections in Key Vault** — `datasource.secret_name`; a wizard notebook builds the secret. No
+  secrets in git.
+- **Auto-discovery** — the metadata step registers source objects (`is_active=0`); you review + activate.
+- **DQ + cleansing + masking**, **schema-enabled medallion** (`datasource.sourceschema_table`), and a
+  **gold star schema** (SCD1/2/fact) built in DAG order.
+- **Code-driven data security** — OneLake CLS/RLS, Dynamic Data Masking, and static masking declared
+  in `security_policy` and applied per environment by `cp_security.py`.
+- **One-command environment provisioning** (`cp_bootstrap`) with service-principal auth and a GitHub
+  Actions workflow.
 
-- ✅ Lakehouses and notebooks are live in Hackathon-DEV.
-- ⚠️ Notebooks are the original **Databricks** sources (use `dbutils`, expect the
-  `mxdataspark` wheel). They are visible/readable in Fabric but are **not yet
-  Fabric-native runnable**. Making them run in Fabric (dbutils→notebookutils,
-  package the wheel into a Fabric Environment) is a planned follow-up once the
-  content is reviewed and stable.
-
-## Re-deploy
-
-Auth via Azure CLI (handles MFA):
+## Quick start
 
 ```bash
-az login --tenant <tenant-id> --scope https://api.fabric.microsoft.com/.default --allow-no-subscriptions
-python deploy.py   # or the scripts in the BCPensions deploy project
+# auth: service principal in .env, or `az login`
+python control_plane/deploy/cp_bootstrap.py HackathonShuo DEV   # provision + deploy + load config
+# then run cp_pl_main(load_group, run_id, src_user, src_password) in the workspace
 ```
+
+> The legacy MXData/Databricks accelerator this evolved from lives separately; this repo is the
+> Fabric-native control plane.

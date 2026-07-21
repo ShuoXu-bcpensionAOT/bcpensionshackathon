@@ -10,7 +10,7 @@ platform wiring differs.
 | Context | What | Where it belongs |
 |---------|------|------------------|
 | **Deploy-time** | Identity that provisions/deploys Fabric items | CI identity — an Entra **service principal** via **OIDC / Workload Identity Federation** (no stored secret, preferred) or a client secret in the CI secret store |
-| **Run-time** | The **source DB password** used when `cp_pl_main` actually runs | **Azure Key Vault**, read by the notebook at run time (planned) — *not* needed for deploy (deploy ≠ run) |
+| **Run-time** | The **source connection** used when `cp_pl_main` actually runs | **Azure Key Vault** — `datasource.secret_name` → a secret the worker reads at run time via `notebookutils.credentials.getSecret` (the service principal has KV *get*). *Not* needed for deploy (deploy ≠ run). |
 
 > The CI/CD pipelines here only **deploy** (provision items + load config). They do **not**
 > need the source password. The source password is a *run-time* secret consumed when the
