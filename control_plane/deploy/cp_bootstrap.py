@@ -150,10 +150,17 @@ def ensure_lakehouses(t, wid):
         if n in existing:
             print(f"  lakehouse {n} exists")
             continue
-        r = requests.post(f"{API}/workspaces/{wid}/lakehouses", headers=H(t),
-                          json={"displayName": n, "creationPayload": {"enableSchemas": True}})
-        wait_lro(r, t)
-        print(f"  created lakehouse {n} (schema-enabled)")
+        for attempt in range(12):                       # a just-deleted name stays reserved (409)
+            r = requests.post(f"{API}/workspaces/{wid}/lakehouses", headers=H(t),
+                              json={"displayName": n, "creationPayload": {"enableSchemas": True}})
+            if r.status_code in (200, 201, 202):
+                wait_lro(r, t)
+                print(f"  created lakehouse {n} (schema-enabled)")
+                break
+            if r.status_code == 409:
+                time.sleep(10)
+                continue
+            sys.exit(f"create lakehouse {n} failed: {r.text}")
 
 
 def ensure_sqldb(t, wid, name="config_db"):
