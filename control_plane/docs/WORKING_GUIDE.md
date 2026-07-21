@@ -239,11 +239,14 @@ erDiagram
 | `source_options_json` | str(JSON) | per-object connector options: `query`, `filters`, `select` (schema selection); HTTP `url`/`params`/`response`/`method`/`body` (see §4.9) |
 | `suffix` | str | optional tag appended to the derived table name (e.g. `bc`) |
 
-**Landed-table naming.** When `target_name` is null, the bronze/silver table name is derived as
-`{source_name}_{source_schema|dbo}_{source_table}[_{suffix}]`, lowercased/underscored — e.g.
-source `stats_can`, schema null→`dbo`, table `labour_force`, suffix `bc` →
-**`stats_can_dbo_labour_force_bc`**. This namespaces every source's tables consistently (the
-existing AdventureWorks tables set `target_name` explicitly, which still wins).
+**Landed-table naming (schema-enabled lakehouses).** The medallion lakehouses are **schema-enabled**
+(`creationPayload.enableSchemas`), so bronze/silver land at `Tables/<schema>/<table>`. The location
+is derived: **schema = datasource (`source_name`)**, **table = `{source_schema|dbo}_{source_table}[_{suffix}]`**,
+lowercased/underscored — e.g. source `stats_can`, schema null→`dbo`, table `labour_force`, suffix
+`bc` → **`stats_can.dbo_labour_force_bc`**; AdventureWorks `Person.Address` → **`adventureworks.person_address`**.
+Control/audit tables (metadata lakehouse) use the `dbo` schema. `tpath(lh, table, schema)` builds the
+path; `landed_table(o)` returns `(schema, table)`. Schema-enabled lakehouses are also the recommended
+substrate for OneLake row/column security (§4.10).
 
 **Incremental semantics:** first run (no stored watermark) pulls everything and records
 `max(watermark_column)`; later runs pull `WHERE watermark_column > stored` and append.
@@ -449,7 +452,41 @@ filters/select and activate. SQL Server: every base table (+ keys from the PK). 
 
 The full worked StatCan example (register datasource → discover → tweak+activate, with the generic
 `http` params) is in **`docs/RUNBOOK_statcan.md`**. Its `filters` land only the **32,724-row** BC
-slice as `stats_can_dbo_labour_force_bc` (full table ~5.4M rows).
+slice as `stats_can.dbo_labour_force_bc` (full table ~5.4M rows).
+
+### 4.10 `security_policy` — data security / governance (config-as-code, promotable)
+
+Security is **declared in config and applied per environment** — it promotes like everything else
+(`config/security_policy.yml` → `cp_config`), then `cp_security.py` enforces it. Four methods, each
+with a different reach:
+
+| `method` | Applied by | Enforced on | Use for |
+|----------|-----------|-------------|---------|
+| `onelake_cls` | OneLake data-access **role** (REST API) | **all engines incl. Spark** | hide columns entirely |
+| `onelake_rls` | OneLake role, T-SQL **row predicate** | all engines incl. Spark | filter rows per principal |
+| `ddm` | **Dynamic Data Masking** (`ALTER … ADD MASKED WITH` on the SQL endpoint) | SQL endpoint / Power BI (Spark bypasses) | mask values (`email()`, `default()`, `partial(…)`) |
+| `mask` | `mask` **cleanse function** (silver build) | **everywhere** (stored masked) | irreversible static masking |
+
+| Column | Notes |
+|--------|-------|
+| `policy_id` (PK) | unique |
+| `method` | `onelake_cls` · `onelake_rls` · `ddm` · (`mask` is a `cleanse_rule`) |
+| `lakehouse` | `bronze`/`silver`/`gold` — which lakehouse the table is in |
+| `target_schema`, `target_table` | the schema-enabled table (e.g. `hr` / `employees`) |
+| `columns` | CLS = **visible** whitelist (rest hidden); DDM = columns to mask (`;`-sep) |
+| `predicate` | RLS T-SQL, **schema-qualified** (e.g. `select * from hr.employees where region = 'BC'`) |
+| `members_json` | Entra principals `[{objectId, objectType}]` the role targets |
+| `mask_function` | DDM function (`email()`, `default()`, …) |
+| `role_name` | OneLake role name — **letters/numbers only, no underscores** |
+| `is_active` | BIT |
+
+Apply per environment: `CP_TARGET_WORKSPACE=<ws> python control_plane/deploy/cp_security.py apply`
+(run after data is loaded — CLS/RLS roles and DDM reference existing tables). `cp_security.py show`
+lists the applied roles + `sys.masked_columns`.
+
+> **Enforcement note:** OneLake CLS/RLS and DDM only bite for **non-privileged** users — Admin/
+> Member/Contributor (and table owners, for `UNMASK`) see clear data. Grant restricted users the
+> **Viewer** role to see hidden/filtered/masked results. `onelake_*` need schema-enabled lakehouses.
 
 ---
 
