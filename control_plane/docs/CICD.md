@@ -130,7 +130,8 @@ UAT/PROD Environment approvals become the gates between stages.
 - Per-env inputs come from **`environments/<env>.yml`** (`workspace_base`, `environment`,
   `tenant_id`, `capacity_id`) — non-secret, in git.
 - Per-env runtime values come from the **`cp_vars` Variable Library** value sets (lakehouse
-  names, `source_server`) — swap the active value set per environment.
+  names, `key_vault_url`) — swap the active value set per environment. Connection info is **not**
+  here — it lives in Key Vault (`datasource.secret_name`).
 - Per-env **secrets** are scoped by the platform (GitHub Environment secrets / DevOps
   environment + KV-linked variable groups).
 

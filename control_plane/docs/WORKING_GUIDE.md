@@ -95,8 +95,9 @@ OneLake so Spark can also read it; tooling reads/writes via `pyodbc` + Entra tok
 
 ### 2.3 Variable Library `cp_vars`
 Per-environment values, swappable via value sets: `config_lakehouse`, `bronze_lakehouse`,
-`silver_lakehouse`, `gold_lakehouse`, `source_server`, `source_connection`. Notebooks read
-it at runtime (`notebookutils.variableLibrary`).
+`silver_lakehouse`, `gold_lakehouse`, `key_vault_url`. Notebooks read it at runtime
+(`notebookutils.variableLibrary`). **No connection info here** — source hosts/creds live in Key
+Vault (`datasource.secret_name`), not in the variable library.
 
 ### 2.4 Notebooks
 | Notebook | Folder | Role | Key parameters |
@@ -393,7 +394,7 @@ config**. Add your own with `register_ingest_connector(name, fn)`.
 
 | `connector` | Reads | `connection_json` | Driver / setup |
 |-------------|-------|-------------------|----------------|
-| `sqlserver` | SQL Server via Spark JDBC (complex types pruned; incremental watermark) | `{host,port,database}` or `{url,driver}`; falls back to the `cp_vars` `source_server` | **bundled — zero setup** (validated: AdventureWorks) |
+| `sqlserver` | SQL Server via Spark JDBC (complex types pruned; incremental watermark) | `{host,port,database,user,password}` from the KV secret (`secret_name`) | **bundled — zero setup** (validated: AdventureWorks) |
 | `postgresql` · `mysql` | that dialect via Spark JDBC (distributed) | `{host,port,database}` (or `{url,driver}`) | **jar bundled in the Fabric runtime — zero setup** |
 | `oracle` · `db2` | **default:** pure-Python driver-side (`oracledb` thin / `ibm_db`), **self-installing** on first use; **opt-in:** distributed Spark JDBC via `connection_json.mode:"jdbc"` | `{host,port,database/service}`; add `mode:"jdbc"` for the JDBC path | **plug-and-play** (driver pip-installs on demand — validated in Fabric). JDBC mode needs the ojdbc/db2jcc jar on an Environment. |
 | `jdbc` | any JDBC via explicit url+driver | `{url,driver}` | needs that driver jar on an Environment |

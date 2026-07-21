@@ -73,6 +73,8 @@ Build it with `cp_connection_builder` (pick **http**) or the CLI:
 az keyvault secret set --vault-name kv-fabric-cc --name statcan-http \
   --value '{"base_url":"https://www150.statcan.gc.ca/t1/wds/rest"}'
 ```
+> **Shortcut:** the `cp_connection_builder` wizard does Steps 3.1–3.2 in one action — it writes the
+> secret *and* registers the `datasource` row (connector + `secret_name`). Then skip to Step 3.3.
 
 **Step 3.2 — register the datasource** — generalized `http` connector, connection **by secret name**
 (no `connection_json`, no custom connector):

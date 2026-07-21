@@ -19,8 +19,8 @@ Pipelines over param-driven Spark notebooks.
 
 - **Pluggable connectors** — SQL Server / Postgres / MySQL / Oracle / DB2 / ODBC and one generalized
   **HTTP/API** connector; add a source with config only.
-- **Connections in Key Vault** — `datasource.secret_name`; a wizard notebook builds the secret. No
-  secrets in git.
+- **Connections in Key Vault** — `datasource.secret_name`; the `cp_connection_builder` wizard writes
+  the secret *and* registers the datasource. No secrets (or hosts) in git or the variable library.
 - **Auto-discovery** — the metadata step registers source objects (`is_active=0`); you review + activate.
 - **DQ + cleansing + masking**, **schema-enabled medallion** (`datasource.sourceschema_table`), and a
   **gold star schema** (SCD1/2/fact) built in DAG order.

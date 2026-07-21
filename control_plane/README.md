@@ -15,7 +15,7 @@ is hand-wired: sources, objects, rules, models, and security policies are all ro
 | Capability | How |
 |---|---|
 | **Pluggable source connectors** | One registry — SQL Server / PostgreSQL / MySQL (bundled JDBC), Oracle / DB2 (self-installing pure-Python), ODBC, and one **generalized HTTP/API** connector (JSON / CSV / zip-CSV via parameters). Add a source = config, no code. |
-| **Connections in Key Vault** | `datasource.secret_name` → a KV secret holding the full connection (DB creds or HTTP base-url/auth). Only the *name* is in git. Build secrets with the `cp_connection_builder` wizard notebook. |
+| **Connections in Key Vault** | `datasource.secret_name` → a KV secret holding the full connection (DB creds or HTTP base-url/auth). Only the *name* is in git; hosts/creds never sit in config or the variable library. The `cp_connection_builder` wizard writes the secret **and** registers the `datasource` row in one step. |
 | **Auto-discovery** | The metadata step enumerates a datasource (all SQL Server tables + PK keys, or declared API resources) and **registers `source_object` rows as `is_active=0`** — you never hand-author objects; you review, tweak, activate. |
 | **Subset & schema selection** | Per-object `filters` (land only the rows you want) and `select` (control which columns land, order, names, casts). |
 | **Data quality & cleansing** | `cleanse_rule` fixes rows (trim/normalize/mask/…); `dq_rule` validates (not_null/min/max/allowed/expr) — error-severity failures are **quarantined** off silver. |
@@ -104,8 +104,8 @@ Runtime state/logs live in the lakehouse and are never promoted.
 
 ## Add a source (config only)
 
-1. **Connection → Key Vault**: run `cp_connection_builder`, pick the source type, fill the fields,
-   Write to Key Vault. Set `datasource.connector` + `datasource.secret_name`.
+1. **Onboard**: run `cp_connection_builder`, pick the source type, fill the connection + name — it
+   writes the secret to Key Vault **and** registers the `datasource` (connector + `secret_name`).
 2. **Discover**: run `cp_pl_metadata` — objects register as `is_active=0`.
 3. **Tweak + activate**: set filters/select/keys, `is_active=1`.
 4. **Run**: `cp_pl_main(load_group=…)`.
