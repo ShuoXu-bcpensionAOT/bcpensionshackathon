@@ -219,13 +219,14 @@ erDiagram
 | `load_group` | INT | the run unit; `cp_pl_main` runs one load group |
 | `ingestion_mode` | str | descriptor (e.g. `custom_jdbc`, `api`) |
 | `is_active` | BIT | |
-| `connector` | str | **which ingest connector to use** — `sqlserver` · `oracle` · `db2` · `postgresql` · `mysql` · `jdbc` · `odbc` · `rest_api` · `statcan_wds` (see §4.9). Falls back to `source_type` if null. |
-| `connection_json` | str(JSON) | connector connection params (host/port/database, or `url`+`driver`, or `odbc` string). **No secrets** — user/password are passed at run time. |
+| `connector` | str | **which ingest connector to use** — `sqlserver` · `oracle` · `db2` · `postgresql` · `mysql` · `jdbc` · `odbc` · `http` (=`rest_api`=`api`=`statcan_wds`) (see §4.9). Falls back to `source_type` if null. |
+| `connection_json` | str(JSON) | **non-secret** connector overrides (e.g. `mode:"jdbc"`, `base_url`, HTTP discovery `tables`). Secrets go in the KV secret, not here. |
+| `secret_name` | str | **Key Vault secret** holding the complete connection (creds/host/db or HTTP base-url+auth). Resolved at runtime; only the *name* is in config. See §4.9. |
 
 ### 4.2 `source_object` — objects to ingest
 | Column | Type | Notes / allowed values |
 |--------|------|------------------------|
-| `object_id` | str PK | stable logical id (e.g. `customer`) |
+| `object_id` | str PK | stable logical id. **Auto-set by discovery** (`{source}_{schema}_{table}`) — objects are discovered, not hand-authored (§4.9). |
 | `source_id` | INT FK→datasource | |
 | `source_schema`, `source_table` | str | source location (schema optional; defaults to `dbo` in the landed name) |
 | `target_name` | str | explicit bronze/silver Delta table name. **Optional** — if null, the name is derived (see naming convention below) |
@@ -235,7 +236,7 @@ erDiagram
 | `watermark_type` | str | **`datetime`** |
 | `processing_state` | str | **`ACTIVE`** (only ACTIVE objects run) |
 | `is_active` | BIT | |
-| `source_options_json` | str(JSON) | per-object connector options: `query`, `filters`, `select` (schema selection), API `table_id`/`url`/`record_path` (see §4.9) |
+| `source_options_json` | str(JSON) | per-object connector options: `query`, `filters`, `select` (schema selection); HTTP `url`/`params`/`response`/`method`/`body` (see §4.9) |
 | `suffix` | str | optional tag appended to the derived table name (e.g. `bc`) |
 
 **Landed-table naming.** When `target_name` is null, the bronze/silver table name is derived as
@@ -394,11 +395,15 @@ config**. Add your own with `register_ingest_connector(name, fn)`.
 | `oracle` · `db2` | **default:** pure-Python driver-side (`oracledb` thin / `ibm_db`), **self-installing** on first use; **opt-in:** distributed Spark JDBC via `connection_json.mode:"jdbc"` | `{host,port,database/service}`; add `mode:"jdbc"` for the JDBC path | **plug-and-play** (driver pip-installs on demand — validated in Fabric). JDBC mode needs the ojdbc/db2jcc jar on an Environment. |
 | `jdbc` | any JDBC via explicit url+driver | `{url,driver}` | needs that driver jar on an Environment |
 | `odbc` | pyodbc on the driver node (modest volumes) | `{odbc:"<conn string with {user}/{password}>"}` | needs the platform ODBC driver/DSN |
-| `rest_api` | generic REST/JSON | base `{headers}`; per-object `url`/`method`/`params`/`record_path` in `source_options_json` | zero setup |
-| `statcan_wds` | Statistics Canada WDS full-table download | — (params in `source_options_json`) | zero setup (validated) |
+| `http` (= `rest_api` = `api` = `statcan_wds`) | **one generalized HTTP/API connector** for every API (like a Data Factory HTTP connector). Request is parameters (§below); response handling is a parameter — `json` / `csv` / `zip_csv`. StatCan is just `response:zip_csv`. | KV secret / `{base_url, headers}` for auth | zero setup (validated) |
 
-**Credentials** are never stored in config — SQL/ODBC/DB user+password are passed at run time
-(`src_user`/`src_password`, from `.env`/CI secret today; a Fabric Connection or Key Vault later).
+**Credentials / connections** are never stored in config. A datasource points at a **Key Vault
+secret** via **`secret_name`**; the secret's value is the complete connection payload
+(`{host,port,database,user,password,…}` JSON or a raw connection string, or for HTTP `{base_url,headers}`).
+`cp_framework.get_secret` reads it via the running identity (**the SPN**, which has KV *get*);
+`_resolve_conn` layers `connection_json` on top for non-secret overrides. `src_user`/`src_password`
+remain as a fallback. Vault URL = the `cp_vars` variable `key_vault_url`. Only the secret *name* is
+in YAML/git — never the value.
 
 **Driver availability — plug-and-play.** SQL Server / Postgres / MySQL JDBC jars are already
 in the Fabric runtime, so those connectors need **no setup**. Oracle/DB2 have no bundled driver,
@@ -429,31 +434,22 @@ deploy unbound and Oracle/DB2 use the self-install path.
   Forms: `["colA","colB"]` (projection) · `[{"source":"C","name":"c","type":"double"}]` ·
   `{"columns":[...],"rename":{src:new},"cast":{col:type}}`. Names are the connector's raw
   output columns; silver still snake_cases afterward. No `select` → land the full schema.
-- REST: `url`, `method`, `headers`, `params`, `body`, `record_path` (dot-path to the record list).
-- StatCan: `table_id`, `language` (`en`/`fr`), `filters` (on **original** StatCan column names).
+- **HTTP** (any API): `url`/`path` (with `{name}` templating from `params`), `method`, `query`,
+  `body`, `headers`, and **`response`** — `{type:"json", record_path}` · `{type:"csv"}` ·
+  `{type:"zip_csv", url_field, exclude}` (follow a JSON pointer to a ZIP, read the CSV). StatCan =
+  `url` template + `params:{table_id,language}` + `response:zip_csv` + `filters` (on **original**
+  column names). Auth/base-url for a private API go in the KV secret.
 
-**Worked example — load a Statistics Canada subset (config only):**
-```sql
--- 1) the source system + its connector. source_id is IDENTITY (auto) — grab it for the FK.
-INSERT INTO dbo.datasource (source_name,source_type,load_group,ingestion_mode,is_active,connector)
-VALUES ('stats_can','API',2,'api',1,'statcan_wds');
-DECLARE @source_id INT = SCOPE_IDENTITY();
+**Objects are discovered, not hand-authored.** The **metadata step** enumerates a datasource and
+**registers `source_object` rows as `is_active=0`** (never clobbering existing tweaks); you then set
+filters/select and activate. SQL Server: every base table (+ keys from the PK). HTTP: one object per
+`table_id`/resource declared in the datasource. So the flow is: register the *datasource* → run
+`cp_pl_metadata` → tweak + activate the object → run `cp_pl_bronze/silver`. `source_id` is
+`IDENTITY` (auto); use `SCOPE_IDENTITY()` if you ever insert a datasource by hand.
 
--- 2) the object: table 14100287 (Labour force), filtered to a BC/Total/Estimate/Seasonally-adjusted
---    slice, landing a controlled column set with VALUE as double. target_name null -> derived name.
-INSERT INTO dbo.source_object
-  (object_id,source_id,source_schema,source_table,load_type,key_columns_json,is_active,processing_state,suffix,source_options_json)
-VALUES ('statcan_labour_force',@source_id,NULL,'labour_force','full','["REF_DATE","VECTOR"]',1,'ACTIVE','bc',
- '{"table_id":"14100287","language":"en",
-   "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
-   "select":{"columns":["REF_DATE","GEO","Labour_force_characteristics","Age_group","Gender","Statistics","Data_type","VECTOR","COORDINATE","VALUE","UOM"],
-             "cast":{"VALUE":"double"}}}');
-
--- 3) steps for the new load group (metadata/bronze/silver on; gold/pbi off), then run cp_pl_main(load_group=2)
-```
-The full table is ~5.4M rows; the `filters` land only the **32,724-row** BC slice as
-`stats_can_dbo_labour_force_bc`. Non-SQL-Server connectors are skipped by `metadata_worker`
-(no `INFORMATION_SCHEMA`); their columns are defined by the connector/`select` at ingest.
+The full worked StatCan example (register datasource → discover → tweak+activate, with the generic
+`http` params) is in **`docs/RUNBOOK_statcan.md`**. Its `filters` land only the **32,724-row** BC
+slice as `stats_can_dbo_labour_force_bc` (full table ~5.4M rows).
 
 ---
 

@@ -26,7 +26,8 @@ config_db (SQL)                 cp_pl_main (load_group = 2)
 - **Source**: StatCan WDS REST API. `getFullTableDownloadCSV/14100287/en` returns JSON
   `{status:"SUCCESS", object:"<zip url>"}`; the connector downloads the zip and reads the
   non-`_Meta` CSV. Full table ≈ **5.4M rows**; the filter lands the **32,724-row** BC slice.
-- **Connector**: `statcan_wds` (registered in `cp_framework`). No credentials, no driver — just
+- **Connector**: the **generalized `http` connector** (there is no StatCan-specific connector) —
+  driven by parameters; StatCan is just `response.type = zip_csv`. No credentials, no driver — just
   outbound HTTPS to `www150.statcan.gc.ca`.
 - **Landed table name** is *derived* (we left `target_name` NULL):
   `{source_name}_{source_schema|dbo}_{source_table}_{suffix}` → **`stats_can_dbo_labour_force_bc`**.
@@ -90,7 +91,9 @@ set the key/suffix, flip `is_active=1`):
 UPDATE dbo.source_object
 SET key_columns_json = '["REF_DATE","VECTOR"]',
     suffix = 'bc',
-    source_options_json = '{"table_id":"14100287","language":"en",
+    source_options_json = '{"url":"https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/{table_id}/{language}",
+      "params":{"table_id":"14100287","language":"en"},
+      "response":{"type":"zip_csv","url_field":"object","exclude":"_Meta"},
       "filters":{"GEO":"British Columbia","Gender":"Total - Gender","Statistics":"Estimate","Data type":"Seasonally adjusted"},
       "select":{"columns":["REF_DATE","GEO","Labour_force_characteristics","Age_group","Gender","Statistics","Data_type","VECTOR","COORDINATE","VALUE","UOM"],
                 "cast":{"VALUE":"double"}}}',
@@ -123,15 +126,23 @@ INSERT INTO dbo.steps (load_group, step_order, step_key, child_pipeline, is_acti
 
 ## 4. `source_options_json` explained (the important part)
 
+StatCan is loaded by the **generalized `http` connector** (one connector for every API — there is
+no StatCan-specific connector). `source_options_json` is the *request definition*, exactly like a
+Data Factory HTTP dataset:
+
 | Key | Meaning |
 |-----|---------|
-| `table_id` | StatCan product id — `14100287` (Labour force characteristics). |
-| `language` | `en` / `fr`. |
-| `filters` | **Subset loading.** Equality filters applied **at ingest**, on the **ORIGINAL** StatCan column names (note the space in `"Data type"`). This turns the 5.4M-row table into the 32,724-row BC slice *before* anything is written. Add/remove keys to change the slice. |
-| `select` | **Schema selection.** `columns` = exactly which columns land (names are the connector's *cleaned* output — non-alphanumeric → `_`, e.g. `Labour force characteristics` → `Labour_force_characteristics`), in order; `cast` = per-column type (here `VALUE` → `double`). Omit `select` to land the full schema. |
+| `url` (or `path`) | Endpoint, with `{name}` placeholders filled from `params`. Here `…/getFullTableDownloadCSV/{table_id}/{language}`. (A base URL + auth headers can instead live in the KV secret — see §10.) |
+| `params` | Values for URL templating (and query string) — `{table_id, language}`. |
+| `method` / `query` / `body` / `headers` | Standard HTTP request parts (default `GET`). |
+| `response` | **How to turn the response into rows.** `{type:"json", record_path}` for normal APIs; `{type:"csv"}`; or **`{type:"zip_csv", url_field:"object", exclude:"_Meta"}`** — the StatCan pattern: the response JSON has a field (`object`) pointing to a ZIP; download it and read the non-`_Meta` CSV. |
+| `filters` | **Subset loading.** Equality filters applied **at ingest**, on the **ORIGINAL** column names (note the space in `"Data type"`). Turns the 5.4M-row table into the 32,724-row BC slice *before* anything is written. |
+| `select` | **Schema selection.** `columns` = which columns land (names are the connector's *cleaned* output — non-alphanumeric → `_`, e.g. `Labour force characteristics` → `Labour_force_characteristics`); `cast` = per-column type (`VALUE`→`double`). Omit to land the full schema. |
 
-**Filters use original names; select uses cleaned names** — because the connector filters first,
-then cleans column names, then applies `select`. Silver later snake_cases everything
+**Same connector, different parameters.** A plain JSON API is just `{"url":…, "response":{"type":"json","record_path":"data.records"}}`; StatCan swaps `response.type` to `zip_csv`. Next API → same `http` connector, new params.
+
+**Filters use original names; select uses cleaned names** — the connector fetches, applies `filters`,
+cleans column names, then applies `select`. Silver later snake_cases everything
 (`REF_DATE` → `ref_date`, `VALUE` → `value`).
 
 ---
