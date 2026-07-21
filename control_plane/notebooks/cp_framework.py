@@ -773,6 +773,15 @@ def _json_safe(d):
     return {k: (json.dumps(v) if isinstance(v, (dict, list)) else v) for k, v in d.items()}
 
 
+def seed_control_tables():
+    """Pre-create the append-target control tables (empty) so concurrent ForEach workers don't
+    race to CREATE them on a fresh lakehouse (Delta 'multiple writers to an empty directory')."""
+    for name, schema in SCHEMAS.items():
+        p = tpath("config", name)
+        if not delta_exists(p):
+            write_path(spark.createDataFrame([], schema), p, mode="overwrite")  # noqa: F821
+
+
 def start_run(run_id, details=None):
     append_rows("ingestion_run", [{
         "run_id": run_id, "run_started_at": now_ts(), "run_completed_at": None,

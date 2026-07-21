@@ -12,8 +12,8 @@ from pyspark.sql import functions as F
 
 
 def build():
-    cu = read_path(tpath("silver", "adventureworks_sales_customer"))
-    pe = read_path(tpath("silver", "adventureworks_person_person"))
+    cu = read_path(tpath("silver", "sales_customer", "adventureworks"))
+    pe = read_path(tpath("silver", "person_person", "adventureworks"))
     dt = read_path(tpath("gold", "dim_territory")).select("territory_key", "territory_id")
     stage = (cu.join(pe, cu["person_id"] == pe["business_entity_id"], "left")
              .join(dt, cu["territory_id"] == dt["territory_id"], "left")

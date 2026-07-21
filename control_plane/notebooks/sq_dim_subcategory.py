@@ -12,7 +12,7 @@ from pyspark.sql import functions as F
 
 
 def build():
-    sc = read_path(tpath("silver", "adventureworks_production_productsubcategory"))
+    sc = read_path(tpath("silver", "production_productsubcategory", "adventureworks"))
     dc = read_path(tpath("gold", "dim_category")).select("category_key", "category_id", "category_name")
     stage = (sc.join(dc, sc["product_category_id"] == dc["category_id"], "left")
              .select(

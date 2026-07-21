@@ -96,6 +96,7 @@ def snapshot_columns(lg):
 
 def work():
     lg = int(load_group)
+    seed_control_tables()       # pre-create audit tables so parallel workers don't race to create
     start_run(run_id, {"engine": "pipeline", "load_group": lg})
     register_discovered(lg)     # 1) auto-register objects (is_active=0)
     snapshot_columns(lg)        # 2) column drift for active objects

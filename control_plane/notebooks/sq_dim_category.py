@@ -11,7 +11,7 @@ from pyspark.sql import functions as F
 
 
 def build():
-    c = read_path(tpath("silver", "adventureworks_production_productcategory"))
+    c = read_path(tpath("silver", "production_productcategory", "adventureworks"))
     stage = c.select(
         c["product_category_id"].alias("category_key"),
         c["product_category_id"].alias("category_id"),

@@ -11,7 +11,7 @@ from pyspark.sql import functions as F
 
 
 def build():
-    t = read_path(tpath("silver", "adventureworks_sales_salesterritory"))
+    t = read_path(tpath("silver", "sales_salesterritory", "adventureworks"))
     stage = t.select(
         t["territory_id"].alias("territory_key"),
         t["territory_id"],

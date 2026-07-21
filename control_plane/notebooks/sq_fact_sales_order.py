@@ -12,8 +12,8 @@ from pyspark.sql import functions as F
 
 
 def build():
-    h = read_path(tpath("silver", "adventureworks_sales_salesorderheader"))
-    d = read_path(tpath("silver", "adventureworks_sales_salesorderdetail"))
+    h = read_path(tpath("silver", "sales_salesorderheader", "adventureworks"))
+    d = read_path(tpath("silver", "sales_salesorderdetail", "adventureworks"))
     dp = read_path(tpath("gold", "dim_product")).select("product_key", "product_id")
     dcu = read_path(tpath("gold", "dim_customer"))
     if "_is_current" in dcu.columns:
