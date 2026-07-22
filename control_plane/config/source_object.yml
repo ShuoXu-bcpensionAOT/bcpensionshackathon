@@ -115,3 +115,474 @@
     "Age_group", "Gender", "Statistics", "Data_type", "VECTOR", "COORDINATE", "VALUE",
     "UOM"], "cast": {"VALUE": "double"}}}'
   suffix: bc
+- object_id: 'sc_14100017'
+  source_id: 2
+  source_table: 'labour_force_characteristics_gender_detailed'
+  target_name: 'statcan_labour_force_characteristics_gender_detailed'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100017", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_14100327'
+  source_id: 2
+  source_table: 'labour_force_characteristics_gender_detailed_327'
+  target_name: 'statcan_labour_force_characteristics_gender_detailed_327'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100327", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_14100023'
+  source_id: 2
+  source_table: 'labour_force_characteristics_industry'
+  target_name: 'statcan_labour_force_characteristics_industry'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100023", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_14100020'
+  source_id: 2
+  source_table: 'unemployment_rate_participation_rate_employm'
+  target_name: 'statcan_unemployment_rate_participation_rate_employm'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100020", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_14100060'
+  source_id: 2
+  source_table: 'retirement_age_class_worker'
+  target_name: 'statcan_retirement_age_class_worker'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100060", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_14100125'
+  source_id: 2
+  source_table: 'reason_leaving_job_unadjusted_seasonality'
+  target_name: 'statcan_reason_leaving_job_unadjusted_seasonality'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100125", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_14100064'
+  source_id: 2
+  source_table: 'employee_wages_industry'
+  target_name: 'statcan_employee_wages_industry'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100064", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_14100223'
+  source_id: 2
+  source_table: 'employment_average_weekly_earnings_overtime'
+  target_name: 'statcan_employment_average_weekly_earnings_overtime'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100223", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_14100355'
+  source_id: 2
+  source_table: 'employment_industry_unadjusted_trend_cycle'
+  target_name: 'statcan_employment_industry_unadjusted_trend_cycle'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "14100355", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_18100004'
+  source_id: 2
+  source_table: 'consumer_price_index'
+  target_name: 'statcan_consumer_price_index'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "18100004", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_18100005'
+  source_id: 2
+  source_table: 'consumer_price_index_average'
+  target_name: 'statcan_consumer_price_index_average'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "18100005", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_18100256'
+  source_id: 2
+  source_table: 'consumer_price_index_cpi_statistics'
+  target_name: 'statcan_consumer_price_index_cpi_statistics'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "18100256", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_18100205'
+  source_id: 2
+  source_table: 'new_housing_price_index'
+  target_name: 'statcan_new_housing_price_index'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "18100205", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_17100005'
+  source_id: 2
+  source_table: 'population_estimates_on_july_1'
+  target_name: 'statcan_population_estimates_on_july_1'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "17100005", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_17100057'
+  source_id: 2
+  source_table: 'projected_population_projection_scenario_age'
+  target_name: 'statcan_projected_population_projection_scenario_age'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "17100057", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_17100009'
+  source_id: 2
+  source_table: 'population_estimates'
+  target_name: 'statcan_population_estimates'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "17100009", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_17100059'
+  source_id: 2
+  source_table: 'estimates_components_natural_increase'
+  target_name: 'statcan_estimates_components_natural_increase'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "17100059", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_17100060'
+  source_id: 2
+  source_table: 'estimates_population_as_july_1st'
+  target_name: 'statcan_estimates_population_as_july_1st'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "17100060", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_13100837'
+  source_id: 2
+  source_table: 'life_expectancy_life_table_single'
+  target_name: 'statcan_life_expectancy_life_table_single'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "13100837", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_13100114'
+  source_id: 2
+  source_table: 'life_expectancy_life_table_three'
+  target_name: 'statcan_life_expectancy_life_table_three'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "13100114", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_13100710'
+  source_id: 2
+  source_table: 'mortality_rates_age_group'
+  target_name: 'statcan_mortality_rates_age_group'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "13100710", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_13100394'
+  source_id: 2
+  source_table: 'leading_causes_death_population_age'
+  target_name: 'statcan_leading_causes_death_population_age'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "13100394", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100106'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active'
+  target_name: 'statcan_registered_pension_plans_rpps_active'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100106", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100239'
+  source_id: 2
+  source_table: 'income_individuals_age_group_gender'
+  target_name: 'statcan_income_individuals_age_group_gender'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100239", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_11100190'
+  source_id: 2
+  source_table: 'market_income_government_transfers_income'
+  target_name: 'statcan_market_income_government_transfers_income'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100190", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_11100024'
+  source_id: 2
+  source_table: 'low_income_entry_exit_rates'
+  target_name: 'statcan_low_income_entry_exit_rates'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100024", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_11100055'
+  source_id: 2
+  source_table: 'high_income_tax_filers'
+  target_name: 'statcan_high_income_tax_filers'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100055", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_11100049'
+  source_id: 2
+  source_table: 'assets_debts_net_worth_quintile'
+  target_name: 'statcan_assets_debts_net_worth_quintile'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100049", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_11100016'
+  source_id: 2
+  source_table: 'assets_debts_held_economic_family'
+  target_name: 'statcan_assets_debts_held_economic_family'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100016", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_11100078'
+  source_id: 2
+  source_table: 'assets_debts_after_tax_income'
+  target_name: 'statcan_assets_debts_after_tax_income'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100078", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_36100587'
+  source_id: 2
+  source_table: 'distributions_household_economic_accounts_in'
+  target_name: 'statcan_distributions_household_economic_accounts_in'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "36100587", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100057'
+  source_id: 2
+  source_table: 'assets_debts_after_tax_income_057'
+  target_name: 'statcan_assets_debts_after_tax_income_057'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100057", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_11100050'
+  source_id: 2
+  source_table: 'tax_filers_dependants_with_income'
+  target_name: 'statcan_tax_filers_dependants_with_income'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100050", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_36100434'
+  source_id: 2
+  source_table: 'gross_domestic_product_gdp_at'
+  target_name: 'statcan_gross_domestic_product_gdp_at'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "36100434", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_36100104'
+  source_id: 2
+  source_table: 'gross_domestic_product_expenditure_based'
+  target_name: 'statcan_gross_domestic_product_expenditure_based'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "36100104", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_10100139'
+  source_id: 2
+  source_table: 'bank_money_market_interest_rates'
+  target_name: 'statcan_bank_money_market_interest_rates'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "10100139", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_36100222'
+  source_id: 2
+  source_table: 'gross_domestic_product_expenditure_based_222'
+  target_name: 'statcan_gross_domestic_product_expenditure_based_222'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "36100222", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_11100222'
+  source_id: 2
+  source_table: 'household_spending_regions'
+  target_name: 'statcan_household_spending_regions'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100222", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
+- object_id: 'sc_34100133'
+  source_id: 2
+  source_table: 'mortgage_housing_corporation_average_rents'
+  target_name: 'statcan_mortgage_housing_corporation_average_rents'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "34100133", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100062'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active_062'
+  target_name: 'statcan_registered_pension_plans_rpps_active_062'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100062", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100063'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active_063'
+  target_name: 'statcan_registered_pension_plans_rpps_active_063'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100063", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100064'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active_064'
+  target_name: 'statcan_registered_pension_plans_rpps_active_064'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100064", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100111'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active_111'
+  target_name: 'statcan_registered_pension_plans_rpps_active_111'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100111", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100115'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active_115'
+  target_name: 'statcan_registered_pension_plans_rpps_active_115'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100115", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100117'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active_117'
+  target_name: 'statcan_registered_pension_plans_rpps_active_117'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100117", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100119'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active_119'
+  target_name: 'statcan_registered_pension_plans_rpps_active_119'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100119", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100120'
+  source_id: 2
+  source_table: 'registered_pension_plans_rpps_active_120'
+  target_name: 'statcan_registered_pension_plans_rpps_active_120'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100120", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100133'
+  source_id: 2
+  source_table: 'registered_pension_plan_rpp_active'
+  target_name: 'statcan_registered_pension_plan_rpp_active'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100133", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}}'
+- object_id: 'sc_11100044'
+  source_id: 2
+  source_table: 'characteristics_tax_filers_with_registered'
+  target_name: 'statcan_characteristics_tax_filers_with_registered'
+  load_type: 'full'
+  key_columns_json: '["REF_DATE", "VECTOR"]'
+  is_active: true
+  processing_state: 'ACTIVE'
+  source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100044", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
+  suffix: 'bc'
