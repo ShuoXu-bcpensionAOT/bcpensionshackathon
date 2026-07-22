@@ -151,6 +151,69 @@ def build_bronze(tok):
     return pipeline(params, [plan_act, fe] + fail_handler(tok, "cp_pl_bronze", "ForEachObject"))
 
 
+def _onprem_connection_id():
+    """The gateway Fabric-connection GUID for the on-prem datasource (from config); a placeholder if
+    none is set yet (operator drops in the real GUID)."""
+    try:
+        import json
+        import cp_sqldb as S
+        cn = S.connect()
+        cur = cn.cursor()
+        cur.execute("SELECT connection_json FROM dbo.datasource "
+                    "WHERE connector='onprem' AND connection_json IS NOT NULL")
+        row = cur.fetchone()
+        cn.close()
+        if row and row[0]:
+            return json.loads(row[0]).get("connection_id") or "REPLACE_WITH_GATEWAY_CONNECTION_ID"
+    except Exception:
+        pass
+    return "REPLACE_WITH_GATEWAY_CONNECTION_ID"
+
+
+def _copy_onprem(conn_id, bronze_lh_id):
+    """Copy activity: on-prem source (via the gateway connection) -> bronze `staging` Delta, per
+    ForEach item. Source dataset is SQL Server here — change the type for other on-prem sources.
+    Needs a Fabric connection bound to the on-premises data gateway (GUID = conn_id)."""
+    staged = "@toLower(concat(item().source_schema, '_', item().source_table))"
+    return {
+        "name": "CopyOnPrem", "type": "Copy", "dependsOn": [],
+        "policy": {"timeout": "0.12:00:00", "retry": 1},
+        "typeProperties": {
+            "source": {
+                "type": "SqlServerSource",
+                "sqlReaderQuery": expr("@concat('SELECT * FROM ', item().source_schema, '.', item().source_table)"),
+                "datasetSettings": {"type": "SqlServerTable", "typeProperties": {},
+                                    "externalReferences": {"connection": conn_id}}},
+            "sink": {
+                "type": "LakehouseTableSink", "tableActionOption": "OverwriteSchema",
+                "datasetSettings": {
+                    "type": "LakehouseTable",
+                    "typeProperties": {"table": expr(staged), "schemaName": "staging"},
+                    "linkedService": {"name": "bronze", "properties": {
+                        "type": "Lakehouse", "typeProperties": {
+                            "artifactId": bronze_lh_id, "workspaceId": FN.WS, "rootFolder": "Tables"}}}}}}}
+
+
+def build_onprem(tok):
+    """ON-PREM ingestion: Copy (via gateway) → bronze staging, then bronze_worker (connector 'onprem'
+    reads the staged Delta) → final bronze; the SAME silver/gold follow. Spark can't use the gateway,
+    so the extract is the pipeline's job. Requires an on-premises data gateway + a Fabric connection
+    (put its GUID in the on-prem datasource's connection_json.connection_id)."""
+    plan, worker = nbid(tok, "cp_plan"), nbid(tok, "bronze_worker")
+    bronze_lh = FN.find_item(tok, "bronze", "Lakehouse")
+    conn_id = _onprem_connection_id()
+    params = {"load_group": plit(1, "int"), "run_id": plit("manual")}
+    plan_act = nb("Plan", plan, {
+        "load_group": pexpr("@pipeline().parameters.load_group", "int"), "plan_type": plit("objects")})
+    copy_act = _copy_onprem(conn_id, bronze_lh)
+    worker_act = nb("BronzeWorker", worker, {
+        "run_id": pexpr("@pipeline().parameters.run_id"),
+        "object_json": pexpr("@string(item())")}, depends=["CopyOnPrem"])
+    fe = foreach("ForEachObject", "@json(activity('Plan').output.result.exitValue)",
+                 [copy_act, worker_act], depends=["Plan"], batch=1)
+    return pipeline(params, [plan_act, fe] + fail_handler(tok, "cp_pl_onprem", "ForEachObject"))
+
+
 def build_silver(tok):
     plan, worker = nbid(tok, "cp_plan"), nbid(tok, "silver_worker")
     params = {"load_group": plit(1, "int"), "run_id": plit("manual")}
@@ -254,6 +317,7 @@ def build_main(tok):
 BUILDERS = {
     "cp_pl_metadata": build_metadata,
     "cp_pl_bronze": build_bronze,
+    "cp_pl_onprem": build_onprem,
     "cp_pl_silver": build_silver,
     "cp_pl_gold": build_gold,
     "cp_pl_pbi": build_pbi,

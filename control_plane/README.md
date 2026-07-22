@@ -14,7 +14,7 @@ is hand-wired: sources, objects, rules, models, and security policies are all ro
 
 | Capability | How |
 |---|---|
-| **Pluggable source connectors** | One registry — SQL Server / PostgreSQL / MySQL (bundled JDBC), Oracle / DB2 (self-installing pure-Python), ODBC, and one **generalized HTTP/API** connector (JSON / CSV / zip-CSV via parameters). Add a source = config, no code. |
+| **Pluggable source connectors** | One registry — SQL Server / PostgreSQL / MySQL (bundled JDBC), Oracle / DB2 (self-installing pure-Python), ODBC, and one **generalized HTTP/API** connector (JSON / CSV / zip-CSV via parameters). Firewalled **on-prem** sources load via `cp_pl_onprem` (Copy through the on-premises data gateway → staging → bronze). Add a source = config, no code. |
 | **Connections in Key Vault** | `datasource.secret_name` → a KV secret holding the full connection (DB creds or HTTP base-url/auth). Only the *name* is in git; hosts/creds never sit in config or the variable library. The `cp_connection_builder` wizard writes the secret **and** registers the `datasource` row in one step. |
 | **Auto-discovery** | The metadata step enumerates a datasource (all SQL Server tables + PK keys, or declared API resources) and **registers `source_object` rows as `is_active=0`** — you never hand-author objects; you review, tweak, activate. |
 | **Subset & schema selection** | Per-object `filters` (land only the rows you want) and `select` (control which columns land, order, names, casts). |

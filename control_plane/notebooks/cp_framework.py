@@ -603,6 +603,24 @@ def _ic_db2(o, user, password):
     return _dbapi_to_spark(dbi.connect(cs, "", ""), opts.get("query") or _default_query(o))
 
 
+def _ic_staged(o, user, password):
+    """Read a table an upstream Copy activity already landed in OneLake — for **on-prem** sources
+    that Spark can't reach directly. `cp_pl_onprem` copies on-prem→bronze staging via the gateway;
+    this connector reads that staged Delta so it flows through the normal bronze pipeline (control
+    columns, select, schema naming) into the SAME silver/gold. source_options_json:
+    {staging_lakehouse (default 'bronze'), staging_schema (default 'staging'), staging_table}."""
+    opts = _opts(o)
+    lh = opts.get("staging_lakehouse", "bronze")
+    schema = opts.get("staging_schema", "staging")
+    table = opts.get("staging_table") or _norm_ident(
+        "_".join(x for x in [o.get("source_schema"), o.get("source_table")] if x))
+    p = tpath(lh, table, schema)
+    if not delta_exists(p):
+        raise Exception(f"staged table not found: {lh}.{schema}.{table} "
+                        f"(the cp_pl_onprem Copy activity must land it first)")
+    return read_path(p)
+
+
 INGEST_CONNECTORS = {
     # bundled JDBC jars in the Fabric runtime -> distributed Spark JDBC, zero setup
     "sqlserver": _ic_jdbc, "postgresql": _ic_jdbc, "mysql": _ic_jdbc, "jdbc": _ic_jdbc,
@@ -611,6 +629,9 @@ INGEST_CONNECTORS = {
     # ONE generalized HTTP connector for every API — differ only by parameters (like ADF's HTTP
     # connector). statcan_wds is just an http profile (zip_csv response) + its discoverer.
     "odbc": _ic_odbc, "http": _ic_http, "rest_api": _ic_http, "api": _ic_http, "statcan_wds": _ic_http,
+    # ON-PREM: a Copy activity (via the on-premises data gateway) lands the raw table to staging;
+    # bronze_worker reads it here. Spark can't use the gateway, so the extract is the pipeline's job.
+    "onprem": _ic_staged, "staged": _ic_staged,
 }
 # connectors that support metadata schema discovery (INFORMATION_SCHEMA over JDBC)
 DISCOVERABLE_CONNECTORS = {"sqlserver", "oracle", "db2", "postgresql", "mysql", "jdbc"}

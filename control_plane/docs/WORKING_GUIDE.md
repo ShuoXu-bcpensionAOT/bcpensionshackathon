@@ -400,6 +400,7 @@ config**. Add your own with `register_ingest_connector(name, fn)`.
 | `jdbc` | any JDBC via explicit url+driver | `{url,driver}` | needs that driver jar on an Environment |
 | `odbc` | pyodbc on the driver node (modest volumes) | `{odbc:"<conn string with {user}/{password}>"}` | needs the platform ODBC driver/DSN |
 | `http` (= `rest_api` = `api` = `statcan_wds`) | **one generalized HTTP/API connector** for every API (like a Data Factory HTTP connector). Request is parameters (§below); response handling is a parameter — `json` / `csv` / `zip_csv`. StatCan is just `response:zip_csv`. | KV secret / `{base_url, headers}` for auth | zero setup (validated) |
+| `onprem` (= `staged`) | reads a table an upstream **Copy activity** landed in `bronze/staging/` — for **firewalled on-prem** sources Spark can't reach directly | needs an **on-premises data gateway** + a Fabric connection; the extract runs in `cp_pl_onprem`, not the notebook (see §4.11) |
 
 **Credentials / connections** are never stored in config. A datasource points at a **Key Vault
 secret** via **`secret_name`**; the secret's value is the complete connection payload
@@ -488,6 +489,37 @@ lists the applied roles + `sys.masked_columns`.
 > **Enforcement note:** OneLake CLS/RLS and DDM only bite for **non-privileged** users — Admin/
 > Member/Contributor (and table owners, for `UNMASK`) see clear data. Grant restricted users the
 > **Viewer** role to see hidden/filtered/masked results. `onelake_*` need schema-enabled lakehouses.
+
+---
+
+### 4.11 On-premises sources (gateway + `cp_pl_onprem`)
+
+**Fabric Spark notebooks cannot use the on-premises data gateway** — a notebook connects over the
+direct network, so our JDBC/HTTP connectors only reach sources that are network-reachable (public IP
++ firewall allowlist to Fabric's egress, or a managed-VNet capacity). For a **firewalled on-prem**
+source, the supported path is a **Data Pipeline Copy activity through the gateway**.
+
+`cp_pl_onprem` implements it and hands off to the normal flow:
+```
+Plan (on-prem objects) ─ForEach─►  Copy activity (via gateway connection) → bronze/staging/<table>
+                                    └► bronze_worker  (connector 'onprem' = read the staged Delta)
+                                                       → final bronze  →  the SAME silver / gold
+```
+So on-prem only changes the **extract** — the staged table flows through `bronze_worker` (control
+columns, `select`, schema naming) and then discovery/DQ/security like any other source.
+
+**One-time setup (operator):**
+1. Install the **on-premises data gateway** on a machine inside the on-prem network.
+2. In Fabric, create a **connection** bound to that gateway + the on-prem source (with credentials).
+   The credentials live in the connection, not in config/KV.
+3. Register the datasource: `connector = 'onprem'`, `connection_json = {"connection_id": "<gateway
+   connection GUID>"}`. Add source objects (schema/table) as usual.
+4. Run `cp_pl_onprem(load_group)`, then `cp_pl_silver` / `cp_pl_gold`.
+
+> **Status:** the staged hand-off (`onprem`/`staged` connector → `bronze_worker` → final bronze) is
+> **validated**. The Copy-via-gateway step is authored (`cp_pl_onprem` deploys) but **runs only once
+> you have a gateway + connection** — the Copy source is templated for SQL Server (change the source
+> type for other on-prem systems) and reads `connection_json.connection_id`.
 
 ---
 

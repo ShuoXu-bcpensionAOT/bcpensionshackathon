@@ -26,7 +26,9 @@ notebooks:
   - { name: sq_fact_sales_by_territory, folder: sourcequery }
 
 # Data pipelines in DEPLOY ORDER (children before main). Builders live in cp_pipeline.py.
-pipelines: [cp_pl_metadata, cp_pl_bronze, cp_pl_silver, cp_pl_gold, cp_pl_pbi, cp_pl_main]
+# cp_pl_onprem = generic on-prem ingestion (Copy via the on-premises data gateway → bronze staging,
+# then bronze_worker); needs a gateway + Fabric connection to run (see docs).
+pipelines: [cp_pl_metadata, cp_pl_bronze, cp_pl_onprem, cp_pl_silver, cp_pl_gold, cp_pl_pbi, cp_pl_main]
 
 # Items to remove from every environment on deploy (superseded by the pipeline orchestration).
 superseded_notebooks: [cp_01_setup, cp_02_ingest_bronze, cp_03_build_silver,
