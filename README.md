@@ -12,6 +12,7 @@ Pipelines over param-driven Spark notebooks.
 | **[`control_plane/README.md`](control_plane/README.md)** | Start here — overview, layout, deploy/run/promote, add-a-source. |
 | **[`control_plane/docs/WORKING_GUIDE.md`](control_plane/docs/WORKING_GUIDE.md)** | Full reference: every config table, all connectors, DQ/cleanse, gold DAG, and data security (`.docx` alongside). |
 | **[`control_plane/docs/RUNBOOK_statcan.md`](control_plane/docs/RUNBOOK_statcan.md)** | Worked example: land a Statistics Canada API subset end-to-end. |
+| **[`control_plane/docs/GOVERNANCE_SECURITY.md`](control_plane/docs/GOVERNANCE_SECURITY.md)** | Governance & security: what we've implemented, the full Lakehouse surface, and what a Warehouse adds. |
 | **[`control_plane/docs/CICD.md`](control_plane/docs/CICD.md)** | CI/CD (GitHub Actions + Azure DevOps), service-principal auth, Key Vault. |
 | **[`control_plane/SOLUTION.md`](control_plane/SOLUTION.md)** | Packaged-solution summary + roadmap. |
 
