@@ -55,13 +55,13 @@ Our medallion runs on **schema-enabled lakehouses**. The full security surface a
 
 | Capability | What it does | Enforced on | We use it? |
 |---|---|---|---|
-| **OneLake security roles — CLS** | Hide columns (column whitelist) | **all engines incl. Spark, SQL endpoint, Power BI Direct Lake** (GA) | ✅ `onelake_cls` |
-| **OneLake security roles — RLS** | T-SQL row predicate per principal | **all engines incl. Spark** (GA) | ✅ `onelake_rls` |
-| **Dynamic Data Masking** | Mask values (email/default/random/custom) on the **SQL analytics endpoint**; `GRANT/DENY UNMASK` | SQL endpoint / Power BI (Spark **bypasses**) | ✅ `ddm` |
-| **Workspace roles** | Admin / Member / Contributor / Viewer — the first boundary | control-plane + data | ✅ (SP admin; Viewer for restricted users) |
-| **Item permissions / sharing** | Per-item read/share; ReadAll vs Write | item access | ✅ |
-| **Sensitivity labels + Microsoft Purview** | Classification, labels, catalog, lineage, DLP, data quality — estate-wide (**see §5**) | governance / compliance plane | ◻ available (not yet wired) |
-| **Private networking** | Managed Private Endpoints / private links (incl. on-prem via PLS + ExpressRoute) | connection security | ◻ available (see WORKING_GUIDE §4.11) |
+| **OneLake security roles — CLS** | Hide columns (column whitelist) | **all engines incl. Spark, SQL endpoint, Power BI Direct Lake** (GA) | Yes — `onelake_cls` |
+| **OneLake security roles — RLS** | T-SQL row predicate per principal | **all engines incl. Spark** (GA) | Yes — `onelake_rls` |
+| **Dynamic Data Masking** | Mask values (email/default/random/custom) on the **SQL analytics endpoint**; `GRANT/DENY UNMASK` | SQL endpoint / Power BI (Spark **bypasses**) | Yes — `ddm` |
+| **Workspace roles** | Admin / Member / Contributor / Viewer — the first boundary | control-plane + data | Yes (SP admin; Viewer for restricted users) |
+| **Item permissions / sharing** | Per-item read/share; ReadAll vs Write | item access | Yes |
+| **Sensitivity labels + Microsoft Purview** | Classification, labels, catalog, lineage, DLP, data quality — estate-wide (**see §5**) | governance / compliance plane | Available (not yet wired) |
+| **Private networking** | Managed Private Endpoints / private links (incl. on-prem via PLS + ExpressRoute) | connection security | Available (see WORKING_GUIDE §4.11) |
 
 **Lakehouse limitations to know:**
 - **Masking is not cross-engine.** OneLake CLS *hides* columns everywhere, but *partial masking*
@@ -130,14 +130,19 @@ layers decide **who sees it**.
 
 ## 6. Recommended architecture
 
-```
-                 ┌─────────────────────────── OneLake security (RLS/CLS) — cross-engine ──────────────┐
- sources ──► bronze ──► silver ──► gold        (Spark / SQL endpoint / Direct Lake)                    │
- (KV creds)   (schema-enabled lakehouses; DQ, cleanse, mask, quarantine, audit)                        │
-                                   │                                                                    │
-                                   └──►  (optional) Fabric WAREHOUSE = serving layer                    │
-                                         full T-SQL GRANT/DENY, RLS policies, CLS, DDM, curated views ──┘
-                                         → Power BI / analysts / apps
+```mermaid
+flowchart LR
+  SRC["sources<br/>(KV creds)"]
+  subgraph LH["Lakehouse plane — schema-enabled; DQ, cleanse, mask, quarantine, audit"]
+    direction LR
+    B[(bronze)] --> SI[(silver)] --> G[(gold)]
+  end
+  OLS["OneLake security (RLS / CLS) — cross-engine<br/>Spark / SQL endpoint / Direct Lake"]
+  WH["(optional) Fabric WAREHOUSE = serving layer<br/>full T-SQL GRANT/DENY, RLS policies, CLS, DDM, curated views"]
+  BI["Power BI / analysts / apps"]
+  SRC --> B
+  OLS -. enforces .- LH
+  G --> WH --> BI
 ```
 
 - **Data-engineering plane (lakehouse):** OneLake security (CLS/RLS enforced on Spark) + our
