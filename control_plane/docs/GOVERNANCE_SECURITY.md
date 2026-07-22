@@ -60,8 +60,7 @@ Our medallion runs on **schema-enabled lakehouses**. The full security surface a
 | **Dynamic Data Masking** | Mask values (email/default/random/custom) on the **SQL analytics endpoint**; `GRANT/DENY UNMASK` | SQL endpoint / Power BI (Spark **bypasses**) | ✅ `ddm` |
 | **Workspace roles** | Admin / Member / Contributor / Viewer — the first boundary | control-plane + data | ✅ (SP admin; Viewer for restricted users) |
 | **Item permissions / sharing** | Per-item read/share; ReadAll vs Write | item access | ✅ |
-| **Sensitivity labels** (Purview Information Protection) | Classify + optionally encrypt; labels flow downstream to Power BI/exports | classification/DLP | ◻ available (not yet wired) |
-| **Microsoft Purview** | Catalog, lineage, DLP policies, insider-risk, access policies | governance plane | ◻ available |
+| **Sensitivity labels + Microsoft Purview** | Classification, labels, catalog, lineage, DLP, data quality — estate-wide (**see §5**) | governance / compliance plane | ◻ available (not yet wired) |
 | **Private networking** | Managed Private Endpoints / private links (incl. on-prem via PLS + ExpressRoute) | connection security | ◻ available (see WORKING_GUIDE §4.11) |
 
 **Lakehouse limitations to know:**
@@ -98,7 +97,38 @@ OneLake CLS/RLS).
 
 ---
 
-## 5. Recommended architecture
+## 5. Microsoft Purview — estate-wide governance & compliance
+
+The Fabric-native controls above (OneLake security, DDM, our `security_policy`) **enforce access at
+query time**. **Microsoft Purview** is the complementary **governance & compliance plane across the
+whole data estate** (Fabric, Azure, on-prem, multi-cloud) — it **discovers, classifies, labels, and
+monitors** data, and tells you *what* is sensitive so the enforcement layers can protect it. It
+integrates **natively with Fabric**: sensitivity labels and lineage appear inside Fabric workspaces
+without leaving to the Purview portal. Available today; not yet wired in this framework.
+
+| Capability | What it does | How it fits our framework |
+|---|---|---|
+| **Unified Catalog / Data Map** | Register **OneLake**, scan Fabric workspaces, auto-catalog every item; business glossary, tagging, curation/**certification** | A searchable catalog + business context over the tables our pipelines build. |
+| **Classification** | Auto-detect PII/sensitive columns (built-in + custom classifiers) | Surfaces *which columns* need protection → drives the targets in `security_policy` (CLS/DDM/`mask`). |
+| **Sensitivity labels** (Information Protection / MIP) | Label taxonomy (Public → Highly Confidential); **visible in Fabric**, flow downstream to Power BI / exports / Office; optional encryption; label-aware Copilot grounding | Classification-driven protection that travels *with the data*, beyond query-time RLS/CLS. |
+| **Data Loss Prevention (DLP)** | Policies detect sensitive data in Fabric (lakehouses, semantic models); **audit → enforce** (alert / restrict) | A guardrail on top of least-privilege — catches exposure our roles didn't anticipate. |
+| **Data lineage** | End-to-end across pipelines, notebooks, and reports — shown in Fabric | Complements our run/object audit tables with visual, cross-item lineage. |
+| **Data Quality (DQM)** | Scan + **score** data quality, health controls, rules across the estate | Estate-wide quality on top of our per-object `dq_rule`/quarantine. |
+| **Insider Risk · eDiscovery · Records · Compliance Manager · Audit** | Risky-activity detection, legal hold, retention, regulatory posture, unified audit log | The regulatory/compliance suite for a pensions data estate. |
+
+**Recommended rollout (audit-first):**
+1. Register **OneLake** in the Purview **Data Map**; scan the Fabric workspaces.
+2. Define a **sensitivity-label taxonomy** and publish it (labels then appear in Fabric).
+3. Run **classification** to find PII/sensitive columns → feed the targets into our `security_policy`.
+4. Deploy **DLP** policies in **audit mode**, review, then enforce.
+5. Use **catalog + lineage** for discovery/impact analysis and **DQM** for estate-wide quality scoring.
+
+**Division of labour:** *Purview* classifies, labels, catalogs, and monitors (discovery + compliance,
+estate-wide); *OneLake security / Warehouse security / our `security_policy`* enforce who can read
+what at query time. They compose — Purview says **what is sensitive and labels it**; the enforcement
+layers decide **who sees it**.
+
+## 6. Recommended architecture
 
 ```
                  ┌─────────────────────────── OneLake security (RLS/CLS) — cross-engine ──────────────┐
@@ -120,7 +150,7 @@ OneLake CLS/RLS).
 
 ---
 
-## 6. Operating notes
+## 7. Operating notes
 
 - **Testing enforcement:** OneLake CLS/RLS and DDM only bite for **non-privileged** users. To verify
   live, query as a **Viewer** (admins see clear data). `cp_security.py show` lists applied roles +
@@ -138,3 +168,4 @@ OneLake CLS/RLS).
 - Dynamic Data Masking (Warehouse & Lakehouse SQL endpoint): Microsoft Learn — *Dynamic Data Masking in Fabric*.
 - Warehouse security (GRANT/DENY, RLS security policies, CLS): Microsoft Learn — *Secure your Fabric Data Warehouse*, *Column-level security*, *SQL granular permissions*.
 - On-prem connectivity (managed private endpoints): Microsoft Learn — *Connect on-premises data sources using managed private endpoints*.
+- Microsoft Purview + Fabric (Data Map, sensitivity labels, DLP, lineage, data quality): Microsoft Learn — *Data governance & security baselines with Microsoft Purview*; Microsoft Purview Unified Catalog for Fabric.
