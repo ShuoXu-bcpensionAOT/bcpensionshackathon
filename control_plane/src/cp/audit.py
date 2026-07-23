@@ -53,12 +53,23 @@ def append_rows(config_table, rows):
 
 
 def seed_control_tables():
-    """Pre-create the append-target control tables (empty) so concurrent ForEach workers don't
-    race to CREATE them on a fresh lakehouse (Delta 'multiple writers to an empty directory')."""
+    """Pre-create the append-target control tables (empty). Concurrent event-driven runs (e.g. a
+    batch of dropbox files, one pipeline run each) can hit this simultaneously on a FRESH lakehouse,
+    so tolerate the Delta 'multiple writers to an empty directory' (ProtocolChangedException) race:
+    re-check existence, let whichever writer wins, and retry a few times for eventual consistency."""
+    import time
     for name, schema in SCHEMAS.items():
         p = tpath("config", name)
-        if not delta_exists(p):
-            write_path(spark.createDataFrame([], schema), p, mode="overwrite")
+        for attempt in range(5):
+            if delta_exists(p):
+                break
+            try:
+                write_path(spark.createDataFrame([], schema), p, mode="overwrite")
+                break
+            except Exception:                            # lost the create race (or eventual consistency)
+                if attempt == 4 and not delta_exists(p):
+                    raise
+                time.sleep(2 * (attempt + 1))
 
 
 def start_run(run_id, details=None):
