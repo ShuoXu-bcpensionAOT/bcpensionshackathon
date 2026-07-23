@@ -13,11 +13,15 @@ Pipelines over param-driven Spark notebooks.
 | **[`control_plane/docs/WORKING_GUIDE.md`](control_plane/docs/WORKING_GUIDE.md)** | Full reference: every config table, all connectors, DQ/cleanse, gold DAG, and data security (`.docx` alongside). |
 | **[`control_plane/docs/RUNBOOK_statcan.md`](control_plane/docs/RUNBOOK_statcan.md)** | Worked example: land a Statistics Canada API subset end-to-end. |
 | **[`control_plane/docs/GOVERNANCE_SECURITY.md`](control_plane/docs/GOVERNANCE_SECURITY.md)** | Governance & security: what we've implemented, the full Lakehouse surface, and what a Warehouse adds. |
+| **[`control_plane/docs/DESIGN.md`](control_plane/docs/DESIGN.md)** | Engine internals: the modular `src/cp/` package, how to add a connector, the bundler, the wheel. |
 | **[`control_plane/docs/CICD.md`](control_plane/docs/CICD.md)** | CI/CD (GitHub Actions + Azure DevOps), service-principal auth, Key Vault. |
 | **[`control_plane/SOLUTION.md`](control_plane/SOLUTION.md)** | Packaged-solution summary + roadmap. |
 
 ## Highlights
 
+- **Modular engine** — the runtime is a package (`control_plane/src/cp/`): one file per connector,
+  auto-registered; the pipeline notebooks are 3-cell shells. A bundler flattens it into the
+  `%run cp_framework` cell (and builds a wheel). Add a connector = drop a file. See `docs/DESIGN.md`.
 - **Pluggable connectors** — SQL Server / Postgres / MySQL / Oracle / DB2 / ODBC and one generalized
   **HTTP/API** connector; add a source with config only.
 - **Connections in Key Vault** — `datasource.secret_name`; the `cp_connection_builder` wizard writes

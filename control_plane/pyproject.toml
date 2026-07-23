@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bcpc-control-plane"
+version = "0.1.0"
+description = "Fabric metadata-driven lakehouse control plane engine (connectors, discovery, cleanse, workers)"
+requires-python = ">=3.10"
+# Spark / delta / notebookutils / requests / pandas / pyodbc are provided by the Fabric runtime.
+# Kept dependency-free so the wheel drops onto a Fabric Environment without pinning the platform.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cp*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "deploy"]
+testpaths = ["tests"]

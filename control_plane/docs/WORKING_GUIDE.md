@@ -100,9 +100,16 @@ Per-environment values, swappable via value sets: `config_lakehouse`, `bronze_la
 Vault (`datasource.secret_name`), not in the variable library.
 
 ### 2.4 Notebooks
+
+> The engine is a **modular package** at `control_plane/src/cp/` (one file per connector, etc.).
+> `cp_framework` is **generated** from it by `deploy/cp_bundle.py`, and the worker notebooks are
+> **3-cell shells** (parameters → `%run cp_framework` → one `workers.<x>(...)` call) — no logic in
+> the notebooks. To add a connector you drop a file in `src/cp/connectors/`; you never edit the
+> framework. Full internals + how-to-extend: **[`DESIGN.md`](DESIGN.md)**.
+
 | Notebook | Folder | Role | Key parameters |
 |----------|--------|------|----------------|
-| `cp_framework` | utility | Shared library (`%run` by all): paths, config read (pyodbc), JDBC, Delta helpers, watermark, DQ helpers, gold writers (SCD1/2/fact), DAG topo-sort, audit/log helpers | — |
+| `cp_framework` | utility | GENERATED shared library (`%run` by all) — bundled from `src/cp/`: paths, config read (pyodbc), connectors, discovery, cleanse/DQ, Delta/watermark helpers, gold writers (SCD1/2/fact), DAG topo-sort, audit/log helpers | — |
 | `cp_plan` | utility | Reads config_db, returns the ForEach work-list | `load_group`, `plan_type` (objects\|models\|steps\|datasets) |
 | `cp_log_fail` | utility | Writes a failure row to `pipeline_run_log` | `pipeline_name, run_id, load_group, activity, message` |
 | `metadata_worker` | notebook | Start run; discover source schema; log drift; snapshot `source_column` | `run_id, load_group, src_user, src_password` |
@@ -390,7 +397,10 @@ Bronze ingestion is **connector-dispatched**: each `datasource` declares a `conn
 (`INGEST_CONNECTORS`). A connector fetches the raw extract; `apply_select` then shapes the
 landed schema; control columns are added; the row lands in bronze. Silver is source-agnostic
 (it just reads the bronze table), so **a new source needs no notebook/pipeline changes — only
-config**. Add your own with `register_ingest_connector(name, fn)`.
+config**. To add a **new connector type**, drop one file in `src/cp/connectors/` with
+`@ingest_connector("name")` — the folder auto-registers it, so you never edit the framework or a
+registry list (`register_ingest_connector(name, fn)` is the imperative equivalent). See
+**[`DESIGN.md`](DESIGN.md)**.
 
 | `connector` | Reads | `connection_json` | Driver / setup |
 |-------------|-------|-------------------|----------------|

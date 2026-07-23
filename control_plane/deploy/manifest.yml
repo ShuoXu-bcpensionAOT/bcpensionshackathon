@@ -7,6 +7,8 @@ sql_database: config_db
 variable_library: cp_vars
 
 # Notebooks in DEPLOY ORDER (cp_framework first; others %run it). folder = workspace subfolder.
+# cp_framework is GENERATED from src/cp/ by deploy/cp_bundle.py (cp_deploy regenerates it on deploy);
+# the worker notebooks are 3-cell shells that call into cp/workers. See docs/DESIGN.md.
 notebooks:
   - { name: cp_framework,   folder: utility }
   - { name: cp_plan,        folder: utility }

@@ -14,7 +14,7 @@ is hand-wired: sources, objects, rules, models, and security policies are all ro
 
 | Capability | How |
 |---|---|
-| **Pluggable source connectors** | One registry — SQL Server / PostgreSQL / MySQL (bundled JDBC), Oracle / DB2 (self-installing pure-Python), ODBC, and one **generalized HTTP/API** connector (JSON / CSV / zip-CSV via parameters). Firewalled **on-prem** sources load via `cp_pl_onprem` (Copy through the on-premises data gateway → staging → bronze). Add a source = config, no code. |
+| **Pluggable source connectors** | One registry — SQL Server / PostgreSQL / MySQL (bundled JDBC), Oracle / DB2 (self-installing pure-Python), ODBC, and one **generalized HTTP/API** connector (JSON / CSV / zip-CSV via parameters). Firewalled **on-prem** sources load via `cp_pl_onprem` (Copy through the on-premises data gateway → staging → bronze). Add a source = config, no code. Add a *new connector type* = drop one file in `src/cp/connectors/` (auto-registered — no framework edit); see [`docs/DESIGN.md`](docs/DESIGN.md). |
 | **Connections in Key Vault** | `datasource.secret_name` → a KV secret holding the full connection (DB creds or HTTP base-url/auth). Only the *name* is in git; hosts/creds never sit in config or the variable library. The `cp_connection_builder` wizard writes the secret **and** registers the `datasource` row in one step. |
 | **Auto-discovery** | The metadata step enumerates a datasource (all SQL Server tables + PK keys, or declared API resources) and **registers `source_object` rows as `is_active=0`** — you never hand-author objects; you review, tweak, activate. |
 | **Subset & schema selection** | Per-object `filters` (land only the rows you want) and `select` (control which columns land, order, names, casts). |
@@ -36,17 +36,26 @@ control_plane/
 │   ├── gold_model.yml         model + gold_object + gold_dependency (the gold DAG)
 │   ├── steps.yml              orchestration steps per load group
 │   └── security_policy.yml    CLS / RLS / DDM / mask policies
+├── src/cp/                    THE ENGINE (modular package — source of truth; see docs/DESIGN.md)
+│   ├── runtime/naming/dag/storage/secrets/config_db/transform/audit/gold   core modules
+│   ├── connectors/            one file per source (jdbc, odbc, http, oracle, db2, staged) — auto-registered
+│   ├── discovery/             one file per discoverer (sqlserver, statcan) — auto-registered
+│   ├── cleanse/               cleanse-function library — auto-registered
+│   └── workers/               plan/bronze/silver/metadata/gold entrypoints (the notebooks call these)
 ├── notebooks/                 Fabric notebooks (deployed to the workspace)
-│   ├── cp_framework.py        shared engine: connectors, discovery, cleanse/DQ, gold, security, KV
-│   ├── cp_plan.py             planner — reads config_db, returns the work-list for a ForEach
-│   ├── metadata_worker.py     start run + discover objects + schema-drift snapshot
-│   ├── bronze_worker.py       load ONE object via its connector → bronze
-│   ├── silver_worker.py       dedupe + cleanse + DQ/quarantine → silver
-│   ├── gold_runner.py + sq_*  gold DAG: source-query notebooks build stage → gold
+│   ├── cp_framework.py        GENERATED from src/cp/ by deploy/cp_bundle.py — do not edit
+│   ├── cp_plan.py             thin shell → workers.plan  (planner; returns the ForEach work-list)
+│   ├── metadata_worker.py     thin shell → workers.metadata  (discover objects + schema-drift snapshot)
+│   ├── bronze_worker.py       thin shell → workers.bronze    (load ONE object via its connector → bronze)
+│   ├── silver_worker.py       thin shell → workers.silver    (dedupe + cleanse + DQ/quarantine → silver)
+│   ├── gold_runner.py + sq_*  thin shell → workers.gold  + gold DAG source-query notebooks
 │   ├── cp_log_fail.py         on-failure logger
 │   ├── cp_connection_builder.py   interactive wizard → Key Vault connection secret
 │   └── cp_seed_demo.py        synthetic sensitive table for the security demo
+├── tests/                     off-cluster pytest (pure modules + bundle validity)
+├── pyproject.toml             builds the engine wheel (package `cp`)
 ├── deploy/                    local / CI tooling (Fabric REST + pyodbc)
+│   ├── cp_bundle.py           bundle src/cp/ → the cp_framework cell (validates public API + registries)
 │   ├── cp_bootstrap.py        provision + deploy a whole environment (idempotent)
 │   ├── cp_auth.py             service-principal or az-login token minting
 │   ├── cp_manifest.py         reads deploy/manifest.yml (the resource bundle)
@@ -112,6 +121,8 @@ Runtime state/logs live in the lakehouse and are never promoted.
 
 Worked end-to-end example (a Statistics Canada API subset): **`docs/RUNBOOK_statcan.md`**.
 Full reference (every config table, connector, and the data-security model): **`docs/WORKING_GUIDE.md`**.
+Engine internals (the `src/cp/` package, how to add a connector, the bundler, the wheel):
+**`docs/DESIGN.md`**.
 
 ---
 

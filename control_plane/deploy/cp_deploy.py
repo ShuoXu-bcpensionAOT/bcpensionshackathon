@@ -35,6 +35,11 @@ def source_cells(name):
 
 def deploy(names):
     tok = FN.token()
+    # Regenerate the single-cell cp_framework notebook from the modular src/cp package
+    # (the bundler validates the public API + registries; fails the deploy if a module broke).
+    if "cp_framework" in names:
+        import cp_bundle
+        cp_bundle.main()
     # Attach the driver Environment (if provisioned) to the notebooks that run connectors,
     # so their libraries / JDBC jars are on the classpath. Set by cp_bootstrap.
     env_id = os.getenv("CP_ENV_ID") or None
