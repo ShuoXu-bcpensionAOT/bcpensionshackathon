@@ -17,3 +17,11 @@
   is_active: true
   connector: http
   secret_name: statcan-http
+- source_id: 3
+  source_name: entra
+  source_type: API
+  load_group: 3
+  ingestion_mode: api
+  is_active: true
+  connector: entra
+  secret_name: entra-graph

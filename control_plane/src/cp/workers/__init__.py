@@ -5,5 +5,6 @@ from .bronze import bronze
 from .silver import silver
 from .metadata import metadata
 from .gold import gold
+from .dropbox import dropbox
 
-__all__ = ["plan", "bronze", "silver", "metadata", "gold"]
+__all__ = ["plan", "bronze", "silver", "metadata", "gold", "dropbox"]

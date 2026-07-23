@@ -586,3 +586,66 @@
   processing_state: 'ACTIVE'
   source_options_json: '{"path": "/getFullTableDownloadCSV/{table_id}/{language}", "params": {"table_id": "11100044", "language": "en"}, "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}, "filters": {"GEO": "British Columbia"}}'
   suffix: 'bc'
+- object_id: entra_users
+  source_id: 3
+  source_table: users
+  target_name: entra_users
+  load_type: full
+  key_columns_json: '["id"]'
+  is_active: true
+  processing_state: ACTIVE
+  source_options_json: '{"entity": "users", "select": ["id", "displayName", "userPrincipalName", "mail", "jobTitle", "department", "accountEnabled", "userType", "createdDateTime", "officeLocation", "city", "country"]}'
+- object_id: entra_groups
+  source_id: 3
+  source_table: groups
+  target_name: entra_groups
+  load_type: full
+  key_columns_json: '["id"]'
+  is_active: true
+  processing_state: ACTIVE
+  source_options_json: '{"entity": "groups", "select": ["id", "displayName", "description", "mail", "mailEnabled", "securityEnabled", "groupTypes", "visibility", "createdDateTime"]}'
+- object_id: entra_group_members
+  source_id: 3
+  source_table: group_members
+  target_name: entra_group_members
+  load_type: full
+  key_columns_json: '["group_id", "id"]'
+  is_active: true
+  processing_state: ACTIVE
+  source_options_json: '{"entity": "groups", "subresource": "members", "parent_fields": ["id", "displayName"], "select": ["id", "displayName", "userPrincipalName"]}'
+- object_id: entra_service_principals
+  source_id: 3
+  source_table: service_principals
+  target_name: entra_service_principals
+  load_type: full
+  key_columns_json: '["id"]'
+  is_active: true
+  processing_state: ACTIVE
+  source_options_json: '{"entity": "servicePrincipals", "select": ["id", "appId", "displayName", "servicePrincipalType", "accountEnabled", "appOwnerOrganizationId"]}'
+- object_id: entra_applications
+  source_id: 3
+  source_table: applications
+  target_name: entra_applications
+  load_type: full
+  key_columns_json: '["id"]'
+  is_active: true
+  processing_state: ACTIVE
+  source_options_json: '{"entity": "applications", "select": ["id", "appId", "displayName", "createdDateTime", "signInAudience", "publisherDomain"]}'
+- object_id: entra_directory_roles
+  source_id: 3
+  source_table: directory_roles
+  target_name: entra_directory_roles
+  load_type: full
+  key_columns_json: '["id"]'
+  is_active: true
+  processing_state: ACTIVE
+  source_options_json: '{"entity": "directoryRoles", "select": ["id", "displayName", "description", "roleTemplateId"]}'
+- object_id: entra_role_assignments
+  source_id: 3
+  source_table: role_assignments
+  target_name: entra_role_assignments
+  load_type: full
+  key_columns_json: '["id"]'
+  is_active: true
+  processing_state: ACTIVE
+  source_options_json: '{"entity": "roleManagement/directory/roleAssignments", "expand": ["principal", "roleDefinition"]}'

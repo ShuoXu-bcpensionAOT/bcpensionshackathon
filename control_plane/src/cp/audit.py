@@ -24,6 +24,8 @@ SCHEMAS = {
                       "source_value string, target_value string, status string, checked_at timestamp"),
     "pipeline_run_log": ("pipeline_name string, run_id string, load_group int, activity string, "
                          "message string, logged_at timestamp"),
+    "dropbox_ledger": ("file_key string, content_hash string, schema_name string, "
+                       "object_count int, status string, processed_at timestamp"),
 }
 
 

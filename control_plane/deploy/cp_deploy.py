@@ -49,6 +49,8 @@ def deploy(names):
         eid = env_id if name in attach else None
         FN.upsert_notebook(tok, name, FN.build_ipynb(cells, environment_id=eid))
         print(f"  deployed {name} ({len(cells)} cell(s))" + ("  [env-attached]" if eid else ""))
+    import cp_folders                                   # keep the workspace tidy on every deploy
+    cp_folders.organize_notebooks(tok, FN.WS)
 
 
 def run(name, params):

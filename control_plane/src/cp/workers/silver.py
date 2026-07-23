@@ -81,7 +81,9 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
                              .withColumn("_silver_updated_at", F.current_timestamp())
         sp = tpath("silver", table, schema)
         if all(k in good.columns for k in keys):
-            merge_upsert(sp, good, keys)
+            # dedup on the key set before merge so a merge never sees duplicate source keys — this
+            # is also how keyless sources dedup on the full row (key_columns_json = ["_row_hash"]).
+            merge_upsert(sp, good.dropDuplicates(keys), keys)
         else:
             write_path(good, sp, mode="overwrite")
         s_cnt = read_path(sp).count()

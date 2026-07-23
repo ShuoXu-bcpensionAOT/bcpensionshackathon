@@ -22,10 +22,10 @@ def var(name, default=None):
 
 
 LAYER_NAMES = {
-    "config": var("config_lakehouse", "metadata"),
-    "bronze": var("bronze_lakehouse", "bronze"),
-    "silver": var("silver_lakehouse", "silver"),
-    "gold":   var("gold_lakehouse", "gold"),
+    "config": var("config_lakehouse", "LH_metadata"),
+    "bronze": var("bronze_lakehouse", "LH_bronze"),
+    "silver": var("silver_lakehouse", "LH_silver"),
+    "gold":   var("gold_lakehouse", "LH_gold"),
 }
 SOURCE_SERVER = var("source_server", None)
 SOURCE_CONNECTION = var("source_connection", "")

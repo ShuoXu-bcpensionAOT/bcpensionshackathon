@@ -16,15 +16,26 @@ def _config_props():
     raise Exception(f"{CONFIG_DB_NAME} not found")
 
 
-def config_conn():
+def config_conn(retries=4):
     import pyodbc
     import struct
+    import time
     host, database = _config_props()
     tok = notebookutils.credentials.getToken("https://database.windows.net/").encode("utf-16-le")
     ts = struct.pack(f"<I{len(tok)}s", len(tok), tok)
-    return pyodbc.connect(
-        f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={host};DATABASE={database};Encrypt=yes",
-        attrs_before={1256: ts})
+    cs = (f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={host};DATABASE={database};"
+          "Encrypt=yes;Connection Timeout=60")
+    last = None
+    for a in range(retries):
+        try:
+            return pyodbc.connect(cs, attrs_before={1256: ts}, timeout=60)
+        except pyodbc.Error as e:                        # serverless SQL endpoint cold-start / throttle
+            last = e
+            if any(s in str(e) for s in ("HYT00", "08001", "timeout", "Timeout")):
+                time.sleep(10 * (a + 1))
+                continue
+            raise
+    raise last
 
 
 def config_query(sql, params=()):

@@ -2,7 +2,7 @@
 # Names only; workspace + item IDs are resolved at runtime (nothing env-specific here).
 # Adding an item = one line. Consumed by cp_deploy / cp_pipeline / cp_bootstrap.
 
-lakehouses: [metadata, bronze, silver, gold]
+lakehouses: [LH_metadata, LH_bronze, LH_silver, LH_gold, LH_Filedrop]
 sql_database: config_db
 variable_library: cp_vars
 
@@ -19,6 +19,7 @@ notebooks:
   - { name: bronze_worker,  folder: notebook }
   - { name: silver_worker,  folder: notebook }
   - { name: gold_runner,    folder: notebook }
+  - { name: dropbox_worker, folder: notebook }
   - { name: sq_dim_category,          folder: sourcequery }
   - { name: sq_dim_subcategory,       folder: sourcequery }
   - { name: sq_dim_product,           folder: sourcequery }
@@ -30,7 +31,7 @@ notebooks:
 # Data pipelines in DEPLOY ORDER (children before main). Builders live in cp_pipeline.py.
 # cp_pl_onprem = generic on-prem ingestion (Copy via the on-premises data gateway → bronze staging,
 # then bronze_worker); needs a gateway + Fabric connection to run (see docs).
-pipelines: [cp_pl_metadata, cp_pl_bronze, cp_pl_onprem, cp_pl_silver, cp_pl_gold, cp_pl_pbi, cp_pl_main]
+pipelines: [cp_pl_metadata, cp_pl_bronze, cp_pl_onprem, cp_pl_silver, cp_pl_gold, cp_pl_pbi, cp_pl_dropbox, cp_pl_main]
 
 # Items to remove from every environment on deploy (superseded by the pipeline orchestration).
 superseded_notebooks: [cp_01_setup, cp_02_ingest_bronze, cp_03_build_silver,

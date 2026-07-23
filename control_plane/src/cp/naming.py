@@ -1,4 +1,5 @@
 """Pure naming/identifier helpers — no Fabric/Spark dependency, unit-testable off-cluster."""
+import json
 import re
 from datetime import datetime, timezone
 
@@ -24,6 +25,15 @@ def landed_table(o):
     e.g. source 'Stats Can', schema null, table 'labour_force', suffix 'bc'
          -> ('stats_can', 'dbo_labour_force_bc')  ->  stats_can.dbo_labour_force_bc."""
     schema = _norm_ident(o.get("source_name")) or "dbo"
+    # explicit override (source_options_json.landed = {schema?, table}) — used by the dropbox
+    # intake so files land as clean <schema>.<file[_tab]> with no synthetic "dbo_" prefix.
+    if o.get("source_options_json"):
+        try:
+            lt = (json.loads(o["source_options_json"]) or {}).get("landed")
+        except (ValueError, TypeError):
+            lt = None
+        if lt and lt.get("table"):
+            return _norm_ident(lt.get("schema")) or schema, _norm_ident(lt["table"])
     parts = [(o.get("source_schema") or "dbo"), o.get("source_table")]
     name = "_".join(_norm_ident(p) for p in parts if p)
     if o.get("suffix"):

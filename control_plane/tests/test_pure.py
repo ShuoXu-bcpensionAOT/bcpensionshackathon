@@ -32,3 +32,14 @@ def test_topo_levels_cycle():
     import pytest
     with pytest.raises(ValueError):
         topo_levels(["a", "b"], [("a", "b"), ("b", "a")])
+
+
+def test_landed_override_clean_name():
+    # dropbox uses source_options_json.landed to land clean <schema>.<file_tab> (no dbo_ prefix)
+    import json
+    o = {"source_name": "voc", "source_table": "survey_sheet1",
+         "source_options_json": json.dumps({"landed": {"table": "survey_q1_2026"}})}
+    assert landed_table(o) == ("voc", "survey_q1_2026")
+    # explicit schema in the override wins
+    o2 = {"source_name": "voc", "source_options_json": json.dumps({"landed": {"schema": "dbo", "table": "budget"}})}
+    assert landed_table(o2) == ("dbo", "budget")

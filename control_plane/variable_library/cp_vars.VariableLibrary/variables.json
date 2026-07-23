@@ -1,10 +1,10 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/variables/1.0.0/schema.json",
   "variables": [
-    { "name": "config_lakehouse", "type": "String", "value": "metadata", "note": "logical config layer -> physical lakehouse name" },
-    { "name": "bronze_lakehouse", "type": "String", "value": "bronze" },
-    { "name": "silver_lakehouse", "type": "String", "value": "silver" },
-    { "name": "gold_lakehouse", "type": "String", "value": "gold" },
+    { "name": "config_lakehouse", "type": "String", "value": "LH_metadata", "note": "logical config layer -> physical lakehouse name" },
+    { "name": "bronze_lakehouse", "type": "String", "value": "LH_bronze" },
+    { "name": "silver_lakehouse", "type": "String", "value": "LH_silver" },
+    { "name": "gold_lakehouse", "type": "String", "value": "LH_gold" },
     { "name": "key_vault_url", "type": "String", "value": "https://kv-fabric-cc.vault.azure.net/", "note": "Key Vault holding source connection secrets (datasource.secret_name)" }
   ]
 }

@@ -314,6 +314,18 @@ def build_main(tok):
     return pipeline(params, activities)
 
 
+def build_dropbox(tok):
+    """Event-driven dropbox: one run per dropped file. Parameters are named to MATCH the OneLake
+    event's CloudEvent fields (Subject/Type/Source) so the Data Activator trigger auto-binds them
+    with no manual mapping; Subject carries the file path. The worker registers + loads the file
+    (bronze append -> silver dedup) and archives it. Subject="" -> scan all of newfile/."""
+    worker = nb("Dropbox", nbid(tok, "dropbox_worker"), {
+        "file_path": pexpr("@pipeline().parameters.Subject"),
+        "run_id": pexpr("@pipeline().parameters.run_id")})
+    params = {"Subject": plit(""), "Type": plit(""), "Source": plit(""), "run_id": plit("event")}
+    return pipeline(params, [worker])
+
+
 BUILDERS = {
     "cp_pl_metadata": build_metadata,
     "cp_pl_bronze": build_bronze,
@@ -321,6 +333,7 @@ BUILDERS = {
     "cp_pl_silver": build_silver,
     "cp_pl_gold": build_gold,
     "cp_pl_pbi": build_pbi,
+    "cp_pl_dropbox": build_dropbox,
     "cp_pl_main": build_main,
 }
 
@@ -331,3 +344,5 @@ if __name__ == "__main__":
     for name in names:
         if name in BUILDERS:
             print(f"deployed {name}:", deploy_pipeline(tok, name, BUILDERS[name](tok)))
+    import cp_folders                                   # keep pipelines in the 'pipeline' folder
+    cp_folders.move_pipelines(tok, FN.WS)

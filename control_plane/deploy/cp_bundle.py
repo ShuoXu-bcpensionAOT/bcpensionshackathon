@@ -58,7 +58,8 @@ def _modules():
     mods += _folder("connectors", skip=("base.py",))
     mods += [SRC / "discovery" / "__init__.py"] + _folder("discovery")
     mods += [SRC / "gold.py"]
-    mods += [SRC / "workers" / m for m in ("plan.py", "bronze.py", "silver.py", "metadata.py", "gold.py")]
+    mods += [SRC / "workers" / m for m in ("plan.py", "bronze.py", "silver.py", "metadata.py",
+                                           "gold.py", "dropbox.py")]
     return mods
 
 
@@ -70,7 +71,7 @@ FOOTER = ('\n\n# --- worker namespace (so the thin notebooks call workers.<layer
           '#     whether this is the %run bundle or, later, `from cp import workers`) ---\n'
           'import types as _types\n'
           'workers = _types.SimpleNamespace(plan=plan, bronze=bronze, silver=silver,\n'
-          '                                 metadata=metadata, gold=gold)\n\n'
+          '                                 metadata=metadata, gold=gold, dropbox=dropbox)\n\n'
           'print("cp_framework loaded")\n')
 
 # The public API the workers / notebooks / deploy rely on — every name must survive bundling.
@@ -86,7 +87,7 @@ EXPECTED_PUBLIC = {
     "_resolve_conn", "_opts", "_conn", "jdbc_read", "_jdbc_driver", "_jdbc_load",
     "discover_objects", "register_discoverer",
     "gold_write", "build_stage_and_gold",
-    "plan", "bronze", "silver", "metadata", "gold", "workers",
+    "plan", "bronze", "silver", "metadata", "gold", "dropbox", "workers",
 }
 EXPECTED_REGISTRY_DECOS = {  # name in a decorator/register call -> proves the file is bundled
     "sqlserver", "postgresql", "mysql", "jdbc", "oracle", "db2", "odbc", "http", "rest_api",
