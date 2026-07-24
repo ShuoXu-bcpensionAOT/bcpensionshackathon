@@ -1,0 +1,359 @@
+<title>Fabric Delivery Guide — Milestones Explained</title>
+<style>
+  :root{
+    --bg:#EEF2F6; --panel:#FFFFFF; --panel2:#F6F9FB; --ink:#1E2732; --muted:#63707E; --line:#DBE1E9;
+    --fabric:#0E7C5F; --accent:#0F6CBD;
+    --plat-bg:#E3F4EE; --plat-tx:#0B6B52; --plat-bd:#8FD3BF;
+    --std-bg:#FBEFD6; --std-tx:#8C6708; --std-bd:#E6C77A;
+    --both-bg:#ECE9FB; --both-tx:#5B47B0; --both-bd:#BEB2E8;
+    --bronze:#B87333; --silver:#8A94A3; --gold:#C99A2E;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#12161C; --panel:#1B222B; --panel2:#212a34; --ink:#E7ECF2; --muted:#98A4B2; --line:#2B3542;
+      --fabric:#4FBF9E; --accent:#5AA6E8;
+      --plat-bg:#123027; --plat-tx:#6FD6B6; --plat-bd:#265b4a;
+      --std-bg:#332912; --std-tx:#E4BE68; --std-bd:#5c4a22;
+      --both-bg:#241f3d; --both-tx:#B9AAF0; --both-bd:#463a72; }
+  }
+  :root[data-theme="light"]{ --bg:#EEF2F6; --panel:#FFFFFF; --panel2:#F6F9FB; --ink:#1E2732; --muted:#63707E; --line:#DBE1E9; --fabric:#0E7C5F; --accent:#0F6CBD; --plat-bg:#E3F4EE; --plat-tx:#0B6B52; --plat-bd:#8FD3BF; --std-bg:#FBEFD6; --std-tx:#8C6708; --std-bd:#E6C77A; --both-bg:#ECE9FB; --both-tx:#5B47B0; --both-bd:#BEB2E8; }
+  :root[data-theme="dark"]{ --bg:#12161C; --panel:#1B222B; --panel2:#212a34; --ink:#E7ECF2; --muted:#98A4B2; --line:#2B3542; --fabric:#4FBF9E; --accent:#5AA6E8; --plat-bg:#123027; --plat-tx:#6FD6B6; --plat-bd:#265b4a; --std-bg:#332912; --std-tx:#E4BE68; --std-bd:#5c4a22; --both-bg:#241f3d; --both-tx:#B9AAF0; --both-bd:#463a72; }
+
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 24px 72px;}
+  .eyebrow{font-size:12px;letter-spacing:.11em;text-transform:uppercase;color:var(--fabric);font-weight:700;}
+  h1{font-size:30px;font-weight:800;margin:.28em 0 .2em;letter-spacing:-.015em;text-wrap:balance;}
+  .lede{color:var(--muted);font-size:15.5px;max-width:74ch;}
+  h2.ms{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:800;margin:0;}
+  h3{font-size:20px;font-weight:750;margin:.1em 0 .1em;letter-spacing:-.01em;}
+  h4{font-size:16px;font-weight:700;margin:26px 0 4px;}
+  .cap{color:var(--muted);font-size:13.5px;margin:0 0 12px;max-width:80ch;}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:22px 0 6px;}
+  .lg{display:flex;gap:9px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:12.5px;max-width:330px;}
+  .chip{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:999px;white-space:nowrap;border:1px solid;}
+  .chip.platform{background:var(--plat-bg);color:var(--plat-tx);border-color:var(--plat-bd);}
+  .chip.standard{background:var(--std-bg);color:var(--std-tx);border-color:var(--std-bd);}
+  .chip.both{background:var(--both-bg);color:var(--both-tx);border-color:var(--both-bd);}
+  .lg b{display:block;}
+
+  /* milestone section */
+  section.ms{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px 24px 28px;margin:26px 0;box-shadow:0 1px 2px rgba(20,30,45,.04);}
+  .ms-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:6px;}
+  .ms-goal{color:var(--muted);font-size:13.5px;}
+
+  /* matrix */
+  .mx{width:100%;border-collapse:separate;border-spacing:0;margin:8px 0 6px;font-size:13.5px;}
+  .mx-wrap{overflow-x:auto;}
+  .mx th{text-align:left;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:6px 12px;border-bottom:1px solid var(--line);}
+  .mx td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .mx tr:last-child td{border-bottom:none;}
+  .mx td.item{width:26%;font-weight:650;}
+  .mx td.fab{width:37%;color:var(--ink);}
+  .mx td.ctl{width:37%;}
+  .mx td .chip{margin-bottom:6px;}
+  .mx tbody tr:hover{background:var(--panel2);}
+  @media(max-width:720px){ .mx td.item{width:auto;} .mx{min-width:640px;} }
+
+  /* diagram: roadmap */
+  .road{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:8px;align-items:stretch;margin:18px 0 6px;}
+  .rstep{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
+  .rstep .n{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);}
+  .rstep h5{margin:2px 0 8px;font-size:15px;font-weight:750;}
+  .rstep ul{margin:0;padding-left:16px;color:var(--muted);font-size:12px;}
+  .rarrow{align-self:center;color:var(--fabric);font-size:22px;font-weight:800;}
+  @media(max-width:720px){ .road{grid-template-columns:1fr;} .rarrow{transform:rotate(90deg);justify-self:center;} }
+
+  /* diagram: architecture stack */
+  .stack{display:grid;grid-template-columns:1fr 190px;gap:12px;margin:14px 0 4px;}
+  .bands{display:flex;flex-direction:column;gap:10px;}
+  .band{border-radius:12px;padding:12px 16px;border:1px solid var(--line);background:var(--panel2);font-size:13px;}
+  .band .bt{font-weight:750;font-size:13.5px;}
+  .band .bs{color:var(--muted);font-size:12px;}
+  .med{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+  .pill{border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;color:#fff;flex:1;min-width:120px;}
+  .pill small{display:block;font-weight:500;opacity:.92;font-size:11px;}
+  .pill.b{background:var(--bronze);} .pill.s{background:var(--silver);} .pill.g{background:var(--gold);}
+  .med .ar{color:var(--muted);font-weight:800;}
+  .rail{border-radius:12px;border:1px dashed var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--panel));padding:14px;font-size:12.5px;display:flex;flex-direction:column;justify-content:center;}
+  .rail b{color:var(--accent);}
+  @media(max-width:720px){ .stack{grid-template-columns:1fr;} }
+
+  /* diagram: horizontal flow (medallion / lifecycle / gold-report / fan) */
+  .flow{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin:14px 0 4px;}
+  .fnode{flex:1;min-width:130px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;}
+  .fnode small{display:block;font-weight:500;color:var(--muted);font-size:11.5px;margin-top:3px;}
+  .fnode.b{border-top:3px solid var(--bronze);} .fnode.s{border-top:3px solid var(--silver);} .fnode.g{border-top:3px solid var(--gold);}
+  .far{align-self:center;color:var(--fabric);font-weight:800;font-size:20px;}
+  @media(max-width:720px){ .far{transform:rotate(90deg);} }
+
+  /* diagram: security funnel */
+  .funnel{display:flex;flex-direction:column;align-items:center;gap:6px;margin:14px 0 4px;}
+  .flayer{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:9px 14px;text-align:center;font-size:12.5px;font-weight:650;}
+  .flayer small{color:var(--muted);font-weight:500;}
+  .fw1{width:100%;} .fw2{width:82%;} .fw3{width:66%;} .fw4{width:52%;} .fw5{width:40%;}
+  .flayer.acc{border-color:var(--accent);}
+
+  /* diagram: roles */
+  .roles{display:flex;flex-direction:column;gap:10px;align-items:center;margin:14px 0 4px;}
+  .role{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 16px;font-weight:700;font-size:13px;text-align:center;}
+  .role small{display:block;font-weight:500;color:var(--muted);font-size:11.5px;}
+  .role.top{border-color:var(--fabric);background:color-mix(in srgb,var(--fabric) 8%,var(--panel));}
+  .role-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;width:100%;}
+  .role-row .role{flex:1;min-width:150px;}
+
+  footer{color:var(--muted);font-size:12px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px;}
+  .note{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--fabric);border-radius:10px;padding:12px 15px;font-size:13px;color:var(--ink);margin:16px 0;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">BC Pension Corporation · Microsoft Fabric</div>
+    <h1>Fabric Delivery Guide — the milestones, explained</h1>
+    <p class="lede">For every item in the plan: <b>what it means in Fabric</b> (concept, not deep tech)
+      and <b>how we control it</b>. Some items our platform already handles; others are standards we
+      recommend BCPC adopt.</p>
+
+    <div class="legend">
+      <div class="lg"><span class="chip platform">Platform</span><span><b>Built in our platform</b>Our config-as-code control plane already does this.</span></div>
+      <div class="lg"><span class="chip standard">Standard</span><span><b>Recommended standard</b>A governance/operating decision to adopt — policy, not code.</span></div>
+      <div class="lg"><span class="chip both">Both</span><span><b>Platform + standard</b>The platform provides the mechanism; a standard sets the policy.</span></div>
+    </div>
+    <div class="note">Our <b>control plane</b> is the config-as-code framework we built on Fabric: declare
+      <i>what</i> to load and <i>how</i> to govern it, and it connects, ingests, cleanses, quality-checks,
+      models, and secures the data across DEV / UAT / PROD. Wherever you see <b>Platform</b>, that's what's working.</div>
+  </header>
+
+  <!-- ROADMAP -->
+  <h4>The three milestones at a glance</h4>
+  <div class="road">
+    <div class="rstep"><div class="n">Milestone 1</div><h5>Platform Foundation</h5>
+      <ul><li>Infrastructure &amp; gateway</li><li>Workspaces &amp; lakehouses</li><li>Platform &amp; data governance</li><li>Security &amp; architecture standards</li></ul></div>
+    <div class="rarrow">&rarr;</div>
+    <div class="rstep"><div class="n">Milestone 2</div><h5>Data Integration</h5>
+      <ul><li>SQL MI mirroring</li><li>Oracle integration</li><li>Ingestion framework</li><li>Data product standards</li></ul></div>
+    <div class="rarrow">&rarr;</div>
+    <div class="rstep"><div class="n">Milestone 3</div><h5>Analytics &amp; Reporting</h5>
+      <ul><li>Semantic model standards</li><li>Reporting standards</li><li>Power BI integration</li></ul></div>
+  </div>
+  <p class="cap">Foundation first (the platform everything runs on), then get data in and managed, then turn it into governed analytics.</p>
+
+  <!-- ARCHITECTURE STACK -->
+  <h4>How the platform fits together</h4>
+  <div class="stack">
+    <div class="bands">
+      <div class="band"><div class="bt">Fabric Capacity</div><div class="bs">the compute &amp; storage everything runs on</div></div>
+      <div class="band"><div class="bt">Workspaces &amp; Domains</div><div class="bs">organize items by environment and business area</div></div>
+      <div class="band"><div class="bt">OneLake — medallion lakehouses</div>
+        <div class="med">
+          <div class="pill b">Bronze<small>raw · append-only</small></div><span class="ar">&rarr;</span>
+          <div class="pill s">Silver<small>clean · quality · masked</small></div><span class="ar">&rarr;</span>
+          <div class="pill g">Gold<small>business star schema</small></div>
+        </div></div>
+      <div class="band"><div class="bt">Semantic Model &rarr; Power BI</div><div class="bs">Direct Lake model on Gold, feeding governed reports</div></div>
+    </div>
+    <aside class="rail"><b>Security &amp; Governance</b><br>applied across <i>every</i> layer — Entra groups, row/column security, masking, lineage, audit — plus connectivity (gateway / mirroring) into Bronze.</aside>
+  </div>
+  <p class="cap">Every item in Milestone 1 is a piece of this picture.</p>
+
+  <!-- ============ MILESTONE 1 ============ -->
+  <section class="ms">
+    <div class="ms-head"><h2 class="ms">Milestone 1</h2><h3>Fabric Platform Foundation</h3></div>
+    <p class="ms-goal">Stand up the infrastructure, governance, security, architecture, and operating framework everything else runs on.</p>
+
+    <h4>Establish Fabric Infrastructure Foundation</h4>
+    <p class="cap">The physical footing: the compute we buy, the network path to our data, and the replication options.</p>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Provision Fabric Capacity</td><td class="fab">The compute + storage tier (an F-SKU) that powers every workspace, pipeline, and report.</td><td class="ctl"><span class="chip standard">Standard</span>Size an F-SKU to the workload and assign it to the project workspaces; our provisioning script stands up everything on it, identically per environment.</td></tr>
+      <tr><td class="item">Configure Capacity Administration</td><td class="fab">Admin controls for the capacity — who manages it, feature switches, workload limits, surge protection.</td><td class="ctl"><span class="chip standard">Standard</span>A named capacity-admin group manages it in the Admin portal; we recommend surge-protection and throttling guardrails.</td></tr>
+      <tr><td class="item">Deploy Fabric Data Gateway</td><td class="fab">Software that lets Fabric reach data behind a private network (on-prem or private OCI/Azure).</td><td class="ctl"><span class="chip both">Both</span>Our ingestion routes private sources through the gateway; we documented the architecture, including reusing the existing VNet gateway.</td></tr>
+      <tr><td class="item">Validate Gateway Connectivity</td><td class="fab">Confirming Fabric can actually reach a source through the gateway.</td><td class="ctl"><span class="chip standard">Standard</span>A "test connection" per source before onboarding, plus a documented checklist (firewall, DNS, service account).</td></tr>
+      <tr><td class="item">Review Gateway Architecture</td><td class="fab">Choosing gateway type and network path (VNet vs on-premises data gateway).</td><td class="ctl"><span class="chip platform">Platform</span>We produced the private-OCI diagrams — framework path via the VNet gateway, mirroring path via a dedicated on-prem gateway.</td></tr>
+      <tr><td class="item">Validate SQL MI Mirroring Architecture</td><td class="fab">Confirming near-real-time mirroring works for Azure SQL Managed Instance.</td><td class="ctl"><span class="chip both">Both</span>Mirroring is Microsoft-managed; we mapped how a mirrored DB feeds Silver/Gold and recommend it for specific tables.</td></tr>
+      <tr><td class="item">Assess Oracle Mirroring Feasibility</td><td class="fab">Whether Oracle mirroring fits (prerequisites, limits, cost, promotion).</td><td class="ctl"><span class="chip platform">Platform</span>Delivered as our <i>Bronze vs Mirroring</i> analysis — GA status, invasive prerequisites, limits, gateway needs, recommendation.</td></tr>
+      <tr><td class="item">Document Infrastructure Architecture</td><td class="fab">A written, shared picture of the platform's infrastructure.</td><td class="ctl"><span class="chip platform">Platform</span>The architecture diagrams and this guide are that documentation, versioned in the repo.</td></tr>
+    </tbody></table></div>
+
+    <h4>Establish Fabric Platform Foundation</h4>
+    <p class="cap">The logical structure: workspaces, domains, and the lakehouses where data lives — plus reusable patterns that make new work fast.</p>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Create Initial Fabric Workspaces</td><td class="fab">Workspaces hold items (lakehouses, pipelines, reports) and carry access + capacity.</td><td class="ctl"><span class="chip platform">Platform</span>Our provisioning script creates workspaces per environment; nothing is hand-clicked.</td></tr>
+      <tr><td class="item">Define Workspace Structure</td><td class="fab">How work is divided into workspaces (by environment, domain, project).</td><td class="ctl"><span class="chip standard">Standard</span>An environment split (DEV / UAT / PROD) with domain-aligned workspaces inside, so promotion and access stay clean.</td></tr>
+      <tr><td class="item">Define Domain Alignment Strategy</td><td class="fab">Fabric <i>domains</i> group workspaces by business area for ownership and discovery.</td><td class="ctl"><span class="chip standard">Standard</span>Map domains to BCPC business areas (Pensions, Employer, Member) so ownership and discovery follow the org.</td></tr>
+      <tr><td class="item">Create Initial Lakehouses</td><td class="fab">Lakehouses are the storage + table layer in OneLake where data lands and is modelled.</td><td class="ctl"><span class="chip platform">Platform</span>The framework creates the schema-enabled lakehouses (metadata, bronze, silver, gold, file-drop) from config.</td></tr>
+      <tr><td class="item">Define Lakehouse Organization Standards</td><td class="fab">Naming and layout of lakehouses, schemas, and tables.</td><td class="ctl"><span class="chip platform">Platform</span>Enforced by convention: schema-enabled lakehouses, medallion layers, one naming rule, all from config.</td></tr>
+      <tr><td class="item">Implement Public Dataset Reference Solution</td><td class="fab">A pattern for bringing external/open reference data into the platform.</td><td class="ctl"><span class="chip platform">Platform</span>Demonstrated end-to-end with a Statistics Canada open-data feed via our generic HTTP connector to Silver.</td></tr>
+      <tr><td class="item">Validate Auto-Ingestion Framework</td><td class="fab">Proving data can be onboarded by configuration rather than bespoke code.</td><td class="ctl"><span class="chip platform">Platform</span>The core of the control plane — plus an event-driven "drop a file, it loads itself" intake — validated on real data.</td></tr>
+      <tr><td class="item">Establish Reusable Platform Patterns</td><td class="fab">Turning one-off solutions into repeatable building blocks.</td><td class="ctl"><span class="chip platform">Platform</span>One connector registry, config-as-code onboarding, a packaged engine — a new source is configuration, not new code.</td></tr>
+    </tbody></table></div>
+
+    <h4>Define Fabric Platform Governance</h4>
+    <p class="cap">Who runs the platform and by what process — the operating model.</p>
+    <div class="roles">
+      <div class="role top">Platform Owner<small>capacity · standards · admin</small></div>
+      <div class="role-row">
+        <div class="role">Capacity Admin<small>sizing · guardrails</small></div>
+        <div class="role">Platform Admins<small>tenant · gateways · releases</small></div>
+        <div class="role">Domain Owners<small>per business area</small></div>
+      </div>
+      <div class="role-row">
+        <div class="role">Data Stewards<small>meaning · quality · access</small></div>
+        <div class="role">Data Product Owners<small>Gold products</small></div>
+      </div>
+    </div>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Define Platform Ownership Model</td><td class="fab">Who owns the platform overall — capacity, admin settings, standards.</td><td class="ctl"><span class="chip standard">Standard</span>A platform-owner role (small central team) accountable for capacity, tenant settings, and the standards in this guide.</td></tr>
+      <tr><td class="item">Define Workspace Creation Process</td><td class="fab">How new workspaces are requested, approved, and created consistently.</td><td class="ctl"><span class="chip both">Both</span>A request→approve step feeding our provisioning script, so every workspace is created to standard, not ad hoc.</td></tr>
+      <tr><td class="item">Define Workspace Ownership Standards</td><td class="fab">Who owns each workspace and is accountable for its contents.</td><td class="ctl"><span class="chip standard">Standard</span>Each workspace has a named, domain-aligned owner responsible for access reviews and its data products.</td></tr>
+      <tr><td class="item">Define Capacity Governance Process</td><td class="fab">How capacity is monitored, allocated, and protected from overload.</td><td class="ctl"><span class="chip standard">Standard</span>Monitor via the Capacity Metrics app; set throttling/surge guardrails; a defined path to scale or rebalance.</td></tr>
+      <tr><td class="item">Define Platform Administration Responsibilities</td><td class="fab">The concrete duties of the admins (tenant settings, gateways, updates, incidents).</td><td class="ctl"><span class="chip standard">Standard</span>A responsibilities matrix (RACI) covering tenant settings, gateway upkeep, capacity, and releases.</td></tr>
+      <tr><td class="item">Define Monitoring and Support Model</td><td class="fab">How platform health and issues are watched and resolved.</td><td class="ctl"><span class="chip both">Both</span>Fabric monitoring + our run/audit logs feed a defined support model (who watches what, escalation path).</td></tr>
+      <tr><td class="item">Define Onboarding Process</td><td class="fab">The repeatable path for a new team, source, or product to join.</td><td class="ctl"><span class="chip both">Both</span>A checklist ending in config-as-code entries + our discovery step, so onboarding is guided and consistent.</td></tr>
+      <tr><td class="item">Define Endorsement and Certification Process</td><td class="fab">Fabric's <i>Promoted / Certified</i> labels that signal trustworthy, official items.</td><td class="ctl"><span class="chip standard">Standard</span>Define who can certify, the criteria (owner, quality, docs), and reserve "Certified" for governed Gold products.</td></tr>
+    </tbody></table></div>
+
+    <h4>Define Fabric Data Governance Framework</h4>
+    <p class="cap">Who owns the data and how its quality, meaning, lineage, and lifecycle are managed.</p>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Define Data Domain Ownership Model</td><td class="fab">Which business area owns which data.</td><td class="ctl"><span class="chip standard">Standard</span>Data domains map to business areas with a named domain owner accountable for the data within.</td></tr>
+      <tr><td class="item">Define Data Steward Responsibilities</td><td class="fab">The people who curate meaning, quality, and access for a data area.</td><td class="ctl"><span class="chip standard">Standard</span>A steward role per domain — owns definitions, quality rules, and access decisions.</td></tr>
+      <tr><td class="item">Define Data Product Ownership Model</td><td class="fab">Treating governed datasets as "products" with an owner and consumers.</td><td class="ctl"><span class="chip standard">Standard</span>Gold outputs are the data products; each has an owner, a documented purpose, and a consumer contract.</td></tr>
+      <tr><td class="item">Define Metadata Management Approach</td><td class="fab">How we capture what data exists, its schema, and its meaning.</td><td class="ctl"><span class="chip both">Both</span>The platform captures technical metadata (sources, schemas, drift, runs); the OneLake catalog + a glossary standard add business meaning.</td></tr>
+      <tr><td class="item">Define Data Quality Standards</td><td class="fab">The rules that decide whether data is fit to use.</td><td class="ctl"><span class="chip platform">Platform</span>Declarative rules (not-null, ranges, allowed values, expressions) run on the way to Silver; failing rows are quarantined off the clean layer.</td></tr>
+      <tr><td class="item">Define Data Lineage Requirements</td><td class="fab">Tracing where data came from and what it feeds.</td><td class="ctl"><span class="chip both">Both</span>Fabric's built-in lineage view, plus our audit tables recording every source→bronze→silver→gold run.</td></tr>
+      <tr><td class="item">Define Data Lifecycle Standards</td><td class="fab">Retention, history, and archival over time.</td><td class="ctl"><span class="chip both">Both</span>Bronze is append-only history; Silver/Gold hold current + modelled history (SCD); a retention standard sets how long each is kept.</td></tr>
+      <tr><td class="item">Define Data Sharing Standards</td><td class="fab">Sharing data across teams without copying it.</td><td class="ctl"><span class="chip standard">Standard</span>Prefer OneLake shortcuts / sharing over copies, governed by access + certification, so there's one trusted copy.</td></tr>
+    </tbody></table></div>
+
+    <h4>Define Fabric Security Framework</h4>
+    <p class="cap">Who can see what — access narrows from the whole workspace down to the row, column, and masked value.</p>
+    <div class="funnel">
+      <div class="flayer fw1 acc">Entra security groups <small>— access granted to groups, not people</small></div>
+      <div class="flayer fw2">Workspace roles <small>— Admin / Member / Contributor / Viewer</small></div>
+      <div class="flayer fw3">Lakehouse access <small>— which tables</small></div>
+      <div class="flayer fw4">Row &amp; column security <small>— filter rows · hide columns</small></div>
+      <div class="flayer fw5">Data masking <small>— dynamic + static</small></div>
+    </div>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Define Entra Security Group Strategy</td><td class="fab">Using Microsoft Entra ID groups (not individuals) to grant access.</td><td class="ctl"><span class="chip both">Both</span>Access is granted to Entra groups; our security config references them, so membership — not per-person edits — drives access.</td></tr>
+      <tr><td class="item">Define Workspace Access Model</td><td class="fab">The workspace roles that set broad access.</td><td class="ctl"><span class="chip standard">Standard</span>A least-privilege role mapping per workspace, assigned to Entra groups and reviewed on a cadence.</td></tr>
+      <tr><td class="item">Define Lakehouse Access Model</td><td class="fab">Fine-grained access to tables/columns/rows within a lakehouse.</td><td class="ctl"><span class="chip platform">Platform</span>Applied from config as OneLake column- and row-level security — enforced consistently per environment.</td></tr>
+      <tr><td class="item">Define Row-Level Security Standards</td><td class="fab">Restricting which <i>rows</i> a user sees (e.g. by region or plan).</td><td class="ctl"><span class="chip platform">Platform</span>Row filters declared in config and applied by the framework, so the same rule ships to every environment.</td></tr>
+      <tr><td class="item">Define Data Masking Requirements</td><td class="fab">Hiding or obscuring sensitive values (e.g. SIN, salary).</td><td class="ctl"><span class="chip platform">Platform</span>Dynamic masking at query time plus static masking during processing — sensitive columns can be masked, or never land raw.</td></tr>
+      <tr><td class="item">Define Audit Requirements</td><td class="fab">Recording who did what, and what the pipeline did.</td><td class="ctl"><span class="chip both">Both</span>Fabric's tenant audit logs for user activity, plus our run/quality/drift audit tables for the pipeline itself.</td></tr>
+      <tr><td class="item">Define Compliance Requirements</td><td class="fab">Meeting BCPC's regulatory and privacy obligations.</td><td class="ctl"><span class="chip standard">Standard</span>Map controls (access, masking, audit, residency) to obligations; the platform's security + audit features provide the evidence.</td></tr>
+    </tbody></table></div>
+
+    <h4>Define Fabric Architecture Standards</h4>
+    <p class="cap">The blueprint everyone builds to.</p>
+    <div class="flow">
+      <div class="fnode b">Bronze<small>raw copy · every load kept · audit history</small></div><span class="far">&rarr;</span>
+      <div class="fnode s">Silver<small>dedupe · quality rules · masking · soft-delete</small></div><span class="far">&rarr;</span>
+      <div class="fnode g">Gold<small>star schema · SCD history · business-ready</small></div>
+    </div>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Define Bronze / Silver / Gold Architecture</td><td class="fab">The medallion pattern: raw → cleaned/conformed → business-ready.</td><td class="ctl"><span class="chip platform">Platform</span>The spine of the control plane — Bronze (raw, append-only), Silver (deduped, quality, masked), Gold (star schema).</td></tr>
+      <tr><td class="item">Define Lakehouse vs Warehouse Guidance</td><td class="fab">When to use a Lakehouse (files+tables, Spark) vs a Warehouse (T-SQL).</td><td class="ctl"><span class="chip standard">Standard</span>Default to Lakehouse for the medallion; reach for a Warehouse only where a pure T-SQL surface is required.</td></tr>
+      <tr><td class="item">Define Ingestion Patterns</td><td class="fab">The approved ways data comes in (batch, event/file, mirroring, gateway).</td><td class="ctl"><span class="chip platform">Platform</span>One connector registry covers databases, APIs, files, and on-prem; mirroring is the managed near-real-time option.</td></tr>
+      <tr><td class="item">Define Transformation Patterns</td><td class="fab">The approved ways data is cleaned and modelled.</td><td class="ctl"><span class="chip platform">Platform</span>Config-driven cleanse + quality into Silver, and SQL transforms into a Gold star schema with SCD history.</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <!-- ============ MILESTONE 2 ============ -->
+  <section class="ms">
+    <div class="ms-head"><h2 class="ms">Milestone 2</h2><h3>Data Integration Foundation</h3></div>
+    <p class="ms-goal">Prove BCPC can onboard, move, transform, and manage enterprise data in Fabric.</p>
+
+    <h4>How data comes in</h4>
+    <div class="flow">
+      <div class="fnode">Databases<small>SQL · Oracle · DB2 · PG · MySQL</small></div>
+      <div class="fnode">APIs / open data<small>HTTP</small></div>
+      <div class="fnode">Files<small>drop csv / xlsx</small></div>
+      <div class="fnode">On-prem / OCI<small>via gateway</small></div>
+      <span class="far">&rarr;</span>
+      <div class="fnode" style="border-top:3px solid var(--fabric)">Connector registry<small>config-driven · reusable</small></div>
+      <span class="far">&rarr;</span>
+      <div class="fnode b">Bronze<small>mirroring also lands here</small></div>
+    </div>
+    <p class="cap">Many source types, one config-driven registry, one landing pattern.</p>
+
+    <h4>Implement SQL Managed Instance Integration</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Validate Mirroring Configuration</td><td class="fab">Setting up and confirming a mirrored SQL MI database.</td><td class="ctl"><span class="chip both">Both</span>Mirroring is Microsoft-managed; we validate the setup and confirm the replica lands in OneLake ready for Silver/Gold.</td></tr>
+      <tr><td class="item">Validate Incremental Data Synchronization</td><td class="fab">Confirming ongoing changes flow continuously, not just the first load.</td><td class="ctl"><span class="chip both">Both</span>Mirroring streams changes automatically; we verify inserts/updates/deletes propagate and reconcile.</td></tr>
+      <tr><td class="item">Define Operational Procedures</td><td class="fab">The run-book to keep mirroring healthy (start/stop, re-seed, monitor).</td><td class="ctl"><span class="chip standard">Standard</span>A documented procedure for monitoring replication state, handling re-seeds, and responding to pauses.</td></tr>
+      <tr><td class="item">Measure Refresh Performance</td><td class="fab">How fresh the mirrored data is (latency) and its load impact.</td><td class="ctl"><span class="chip standard">Standard</span>Baseline latency and resource use, with thresholds that tell us when to tune or scale.</td></tr>
+    </tbody></table></div>
+
+    <h4>Implement Oracle Integration</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Validate Connectivity</td><td class="fab">Confirming Fabric can reach the Oracle database (through the gateway).</td><td class="ctl"><span class="chip both">Both</span>Our Oracle connector reaches the source via the gateway; a connection test confirms the path before onboarding.</td></tr>
+      <tr><td class="item">Assess Supplemental Logging Requirements</td><td class="fab">Oracle CDC needs supplemental logging enabled — an invasive DBA change.</td><td class="ctl"><span class="chip platform">Platform</span>Documented precisely in our analysis (database- and table-level), so DBAs know exactly what mirroring requires.</td></tr>
+      <tr><td class="item">Review LogMiner Requirements</td><td class="fab">Mirroring reads Oracle's redo logs via LogMiner, with prerequisites and limits.</td><td class="ctl"><span class="chip platform">Platform</span>Captured in the analysis — LogMiner prerequisites, the broad grants required, and the read-write-source constraint.</td></tr>
+      <tr><td class="item">Document Limitations and Recommendations</td><td class="fab">A clear statement of what works, what doesn't, and the recommended approach.</td><td class="ctl"><span class="chip platform">Platform</span>Delivered as the <i>Bronze vs Mirroring</i> recommendation: framework by default, mirroring selectively for near-real-time.</td></tr>
+    </tbody></table></div>
+
+    <h4>Establish Data Ingestion Framework</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Define Ingestion Standards</td><td class="fab">The consistent way every source is onboarded and lands.</td><td class="ctl"><span class="chip platform">Platform</span>Every source is a config entry; the framework applies the same landing, history, and naming rules to all.</td></tr>
+      <tr><td class="item">Create Reusable Ingestion Templates</td><td class="fab">Templates so a new source doesn't start from scratch.</td><td class="ctl"><span class="chip platform">Platform</span>Adding a source is config; adding a new <i>kind</i> of source is dropping one connector file — both templated.</td></tr>
+      <tr><td class="item">Implement Monitoring and Alerting</td><td class="fab">Knowing when a load runs, succeeds, or fails.</td><td class="ctl"><span class="chip both">Both</span>Every run is logged to audit tables with status and row counts; failures are captured for alerting.</td></tr>
+      <tr><td class="item">Implement Error Handling Standards</td><td class="fab">Predictable behaviour when something goes wrong.</td><td class="ctl"><span class="chip platform">Platform</span>Failures are isolated per source (one bad file won't stop the rest), captured with detail, and safe to re-run.</td></tr>
+    </tbody></table></div>
+
+    <h4>Establish Data Product Standards</h4>
+    <p class="cap">A data product (a governed Gold dataset) moves through a defined lifecycle with an accountable owner at every stage.</p>
+    <div class="flow">
+      <div class="fnode">Draft</div><span class="far">&rarr;</span>
+      <div class="fnode">Published</div><span class="far">&rarr;</span>
+      <div class="fnode" style="border-top:3px solid var(--fabric)">Certified</div><span class="far">&rarr;</span>
+      <div class="fnode">Retired</div>
+    </div>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Define Data Product Lifecycle</td><td class="fab">The stages a data product moves through.</td><td class="ctl"><span class="chip standard">Standard</span>A defined lifecycle with entry/exit criteria at each stage, owned by the data product owner.</td></tr>
+      <tr><td class="item">Define Publication Standards</td><td class="fab">What "published and ready to consume" means.</td><td class="ctl"><span class="chip standard">Standard</span>A publication checklist — owner, docs, quality passing, access set — before a Gold product is announced.</td></tr>
+      <tr><td class="item">Define Ownership Standards</td><td class="fab">Every product has a clear, accountable owner.</td><td class="ctl"><span class="chip standard">Standard</span>Named owner per product, recorded and visible, responsible for quality and consumer support.</td></tr>
+      <tr><td class="item">Define Certification Process</td><td class="fab">Using Fabric endorsement to mark trusted, official products.</td><td class="ctl"><span class="chip standard">Standard</span>Only reviewed Gold products earn "Certified"; the process defines reviewer, criteria, and re-review cadence.</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <!-- ============ MILESTONE 3 ============ -->
+  <section class="ms">
+    <div class="ms-head"><h2 class="ms">Milestone 3</h2><h3>Analytics &amp; Reporting Foundation</h3></div>
+    <p class="ms-goal">Demonstrate end-to-end analytics on Fabric — from modelled data to governed reports.</p>
+
+    <h4>From Gold to a governed report</h4>
+    <div class="flow">
+      <div class="fnode g">Gold<small>data product</small></div><span class="far">&rarr;</span>
+      <div class="fnode">Semantic model<small>Direct Lake · no copy</small></div><span class="far">&rarr;</span>
+      <div class="fnode">Report</div><span class="far">&rarr;</span>
+      <div class="fnode">Consumers<small>via app / Viewer</small></div>
+    </div>
+    <p class="cap">Reports read Gold live through a shared semantic model, with row/column security enforced end-to-end.</p>
+
+    <h4>Establish Semantic Model Standards</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Define Semantic Model Architecture</td><td class="fab">The reusable model (measures, relationships) between Gold and reports — ideally Direct Lake.</td><td class="ctl"><span class="chip both">Both</span>Our Gold star schema is built Direct-Lake-ready; the standard defines shared models over Gold, not per-report copies.</td></tr>
+      <tr><td class="item">Define Naming Standards</td><td class="fab">Consistent, business-friendly names for tables, measures, fields.</td><td class="ctl"><span class="chip standard">Standard</span>A naming convention (business terms, consistent casing) so models read the same across teams.</td></tr>
+      <tr><td class="item">Define Reuse Standards</td><td class="fab">Sharing one certified model instead of rebuilding per report.</td><td class="ctl"><span class="chip standard">Standard</span>One governed model per subject area, reused by many reports; discourage private duplicates.</td></tr>
+      <tr><td class="item">Define Certification Standards</td><td class="fab">Marking the trusted, official semantic models.</td><td class="ctl"><span class="chip standard">Standard</span>Certification criteria (owner, built on Gold, documented, quality-backed), aligned with the data-product process.</td></tr>
+    </tbody></table></div>
+
+    <h4>Establish Reporting Standards</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Define Report Governance Standards</td><td class="fab">Rules for how reports are built, reviewed, and trusted.</td><td class="ctl"><span class="chip standard">Standard</span>Reports build on certified models, follow design/accessibility guidelines, and are reviewed before wide release.</td></tr>
+      <tr><td class="item">Define Publishing Standards</td><td class="fab">Where and how reports are released to audiences.</td><td class="ctl"><span class="chip standard">Standard</span>Publish through governed workspaces / apps with defined audiences, versioning, and a clear promotion path.</td></tr>
+      <tr><td class="item">Define Workspace Consumption Standards</td><td class="fab">How consumers access reports vs where authors build them.</td><td class="ctl"><span class="chip standard">Standard</span>Separate build workspaces from consumption (apps / Viewer), so consumers get a stable, curated experience.</td></tr>
+    </tbody></table></div>
+
+    <h4>Validate Power BI Integration</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Item</th><th>What it means in Fabric</th><th>How we control it</th></tr></thead><tbody>
+      <tr><td class="item">Validate Semantic Model Integration</td><td class="fab">Confirming Power BI reads the Gold model efficiently (Direct Lake, no copy).</td><td class="ctl"><span class="chip both">Both</span>Gold is Direct-Lake-ready; we validate reports read it live without import refresh.</td></tr>
+      <tr><td class="item">Validate Security Integration</td><td class="fab">Confirming access rules (row/column security) carry through to reports.</td><td class="ctl"><span class="chip platform">Platform</span>Row- and column-level security applied at the lakehouse flows through to the model and report — one rule, end-to-end.</td></tr>
+      <tr><td class="item">Validate Workspace Strategy</td><td class="fab">Confirming the workspace/app layout works for real authoring and consumption.</td><td class="ctl"><span class="chip standard">Standard</span>Validate the build-vs-consume split with a real report and audience before rolling out broadly.</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <footer>BC Pension Corporation · Fabric Delivery Guide. Companions: the <b>Bronze vs Mirroring</b> analysis, the <b>private-OCI architecture</b> diagrams, and the control-plane engine guides. <b>Platform</b> = built in our control plane · <b>Standard</b> = recommended governance · <b>Both</b> = mechanism + policy.</footer>
+</div>
