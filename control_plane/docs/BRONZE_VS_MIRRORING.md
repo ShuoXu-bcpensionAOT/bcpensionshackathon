@@ -64,14 +64,48 @@ bronze*, after which the two converge.
 | **Table constraints** | Needs a **PK or unique index**; table name < 30 chars; ≤ 1000 tables | None — loads any table; keys are config, not a requirement |
 | **History (SCD)** | Mirror = current state of source | Silver keeps latest; **gold does SCD1/SCD2/fact** |
 | **Source coverage** | Per-source connector (Oracle, SQL Server, Snowflake, PostgreSQL, Cosmos… + Open Mirroring) | **Any** — jdbc / oracle / db2 / odbc / **HTTP-API** / files / on-prem-staged, one registry |
-| **Promotion (DEV→UAT→PROD)** | Git/pipelines track the mirror *item* only; connection, **manual start**, **re-seed**, and views are per-env manual (see §4) | **Whole medallion is config-as-code** — sources+DQ+gold+security promote together; connection = a KV secret per env |
+| **Promotion (DEV→UAT→PROD)** | Git/pipelines track the mirror *item* only; connection, **manual start**, **re-seed**, and views are per-env manual (see §5) | **Whole medallion is config-as-code** — sources+DQ+gold+security promote together; connection = a KV secret per env |
 | **Ops model** | Microsoft-managed pipeline; **dedicated gateway VM**, archive-log retention, reseed memory spikes | You operate it; retries, capacity, and DQ are yours to tune |
 | **Maturity** | Oracle mirroring is **Preview** | In production here today |
 | **Cost** | Mirrored replica storage has a free allowance (capacity-based); low compute | Spark compute per run + storage |
 
 ---
 
-## 3. Pros & cons
+## 3. Scenario by scenario — what happens when the source changes
+
+Follow a single row through both paths. *Mirrored bronze* = the live replica; *Framework* = our
+connector → bronze → silver → gold.
+
+| Source event | **Mirrored bronze** | **Our framework** |
+|---|---|---|
+| **Row inserted** | Appears in the mirror in ~seconds (CDC) | Picked up on the next run (watermark: when its change-date advances; else next full load); silver keys it, gold adds it |
+| **Row updated** | Mirror row updated in place — shows the **new** value; the old value is **gone** (mirror = current state) | Incremental appends the new version to bronze (a raw change log); silver keeps latest by key; **gold SCD2 preserves old *and* new** — you keep history |
+| **Row deleted** | CDC **removes** the row from the mirror — deletions propagate natively | **Weak spot:** a watermark **can't see deletes** (a delete doesn't bump a change-date) and silver's key-merge doesn't remove absent rows. Reflecting deletes needs a full-snapshot overwrite or a key-set **reconciliation** (soft-delete flag) — an enhancement, not out-of-the-box |
+| **Column added** | Applied (supported DDL) | Full load picks it up; silver **logs a `COLUMN_ADDED` drift event**; flows unless `select` excludes it |
+| **Column dropped** | Applied (supported DDL) | Absent next load; silver **logs `COLUMN_REMOVED`** (warning) |
+| **Column renamed** | Applied (supported DDL) | Shows as drop+add (drift logged); a `select` rename normalizes it |
+| **Column *type* changed** | **Not supported** — mirroring can fail that table | Schema-on-read tolerates it (lands as-is); a `cleanse` cast fixes it |
+| **New table added** | Reconfigure the mirror to include it | Discovery registers it `is_active=0`; review + activate (config-as-code) |
+| **Bulk truncate + reload** | CDC reflects it, but large re-seeds spike gateway memory | Full load reflects it; incremental picks up rows whose change-date advanced |
+| **Source down / logs purged** | CDC pauses; catches up if archive logs retained (~24h) — else a **full re-seed** | Run fails and retries; next run resumes from the watermark (source is truth, we re-read) — no re-seed |
+| **Bad / sensitive data** | Replicated as-is (bad rows *and* PII land raw in OneLake) | DQ **quarantines** bad rows before gold; `cleanse`/`mask`/`select` handle PII **before it lands** |
+| **Point-in-time / audit** | Current state only (Delta time-travel = replication versions, retention-limited) | Bronze append = raw extraction history; gold SCD2 = business history; audit tables = full lineage |
+
+**Two scenarios deserve a callout:**
+
+- **Updates & history — framework wins for auditability.** A mirror always shows *now*: if a
+  member's status changes, it overwrites the old value. Only our **SCD2 gold** keeps the
+  before-and-after with effective dates — which a pension corporation usually needs for audit.
+- **Deletes — mirroring wins out-of-the-box.** The framework's honest weak spot: a watermark can't
+  detect a physical delete, and silver's merge doesn't remove rows that vanished at source.
+  Mirroring propagates deletes for free. If deletes matter (purged records), the framework needs a
+  periodic **full-snapshot overwrite** or a **key-reconciliation / soft-delete** step (the pattern
+  exists in the MXData accelerator's `_is_deleted` handling — a natural enhancement here). Weigh it
+  per table.
+
+---
+
+## 4. Pros & cons
 
 ### Mirroring
 **Pros**
@@ -111,7 +145,7 @@ bronze*, after which the two converge.
 
 ---
 
-## 4. Promotion across environments (DEV → UAT → PROD)
+## 5. Promotion across environments (DEV → UAT → PROD)
 
 This is where the two diverge most for a governed shop — the user explicitly asked, so it's worth
 its own section.
@@ -147,7 +181,7 @@ artifact. For a three-environment pension estate, that difference is the gap bet
 
 ---
 
-## 5. When to choose which
+## 6. When to choose which
 
 **Lean Mirroring when** *all* hold: the table needs **near-real-time** freshness; it's **cleanly
 relational** (PK/unique index, supported types, no LOBs); the DBA **can and will enable CDC**; and
@@ -161,7 +195,7 @@ high-value operational tables for live dashboards.
 
 ---
 
-## 6. Recommendation for BCPC
+## 7. Recommendation for BCPC
 
 **Default to the framework** for on-prem Oracle → bronze → silver → gold. The deciding factors for a
 pension corporation:
@@ -177,7 +211,7 @@ pension corporation:
 4. **Maturity.** Oracle mirroring is **Preview**; the framework is in production here now.
 5. **Latency is usually fine.** Pension reporting rarely needs sub-minute freshness; scheduled or
    event-triggered batch meets the need.
-6. **Simpler promotion (§4).** The whole medallion promotes as one config-as-code unit; mirroring
+6. **Simpler promotion (§5).** The whole medallion promotes as one config-as-code unit; mirroring
    promotes only the replica config and leaves per-env connections, DBA CDC enablement, manual
    start, and re-seed as a checklist repeated in each workspace.
 
