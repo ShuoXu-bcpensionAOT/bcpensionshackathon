@@ -6,6 +6,10 @@ model:
   model_name: sales_star
   load_group: 1
   is_active: true
+- model_id: 2
+  model_name: voc_survey
+  load_group: 3
+  is_active: true
 gold_object:
 - gold_object_id: dim_category
   model_id: 1
@@ -63,6 +67,46 @@ gold_object:
   business_key_columns_json: '["sales_order_id","sales_order_detail_id"]'
   source_query_notebook: sq_fact_sales_order
   is_active: true
+- gold_object_id: voc_dim_survey
+  model_id: 2
+  gold_type: scd1
+  stage_table: voc_dim_survey
+  gold_table: voc_dim_survey
+  business_key_columns_json: '["survey_key"]'
+  source_query_notebook: sq_voc_dim_survey
+  is_active: true
+- gold_object_id: voc_dim_plan
+  model_id: 2
+  gold_type: scd1
+  stage_table: voc_dim_plan
+  gold_table: voc_dim_plan
+  business_key_columns_json: '["plan_key"]'
+  source_query_notebook: sq_voc_dim_plan
+  is_active: true
+- gold_object_id: voc_dim_question
+  model_id: 2
+  gold_type: scd1
+  stage_table: voc_dim_question
+  gold_table: voc_dim_question
+  business_key_columns_json: '["question_key"]'
+  source_query_notebook: sq_voc_dim_question
+  is_active: true
+- gold_object_id: voc_fact_survey_response
+  model_id: 2
+  gold_type: fact
+  stage_table: voc_fact_survey_response
+  gold_table: voc_fact_survey_response
+  business_key_columns_json: '["response_key"]'
+  source_query_notebook: sq_voc_fact_survey_response
+  is_active: true
+- gold_object_id: voc_fact_survey_answer
+  model_id: 2
+  gold_type: fact
+  stage_table: voc_fact_survey_answer
+  gold_table: voc_fact_survey_answer
+  business_key_columns_json: '["answer_key"]'
+  source_query_notebook: sq_voc_fact_survey_answer
+  is_active: true
 gold_dependency:
 - parent_gold_object_id: dim_category
   child_gold_object_id: dim_subcategory
@@ -78,3 +122,5 @@ gold_dependency:
   child_gold_object_id: fact_sales_order
 - parent_gold_object_id: fact_sales_order
   child_gold_object_id: fact_sales_by_territory
+- parent_gold_object_id: voc_fact_survey_answer
+  child_gold_object_id: voc_dim_question

@@ -1,29 +1,16 @@
 # PARAMETERS
 run_id = "manual"
+silver_lh = "LH_silver"
 
 # COMMAND ----------
-%run cp_framework
-
-# COMMAND ----------
-# Source query: silver sales territory -> gold dim_territory (SCD1). No parent.
-import traceback
-from pyspark.sql import functions as F
-
-
-def build():
-    t = read_path(tpath("silver", "sales_salesterritory", "adventureworks"))
-    stage = t.select(
-        t["territory_id"].alias("territory_key"),
-        t["territory_id"],
-        t["name"].alias("territory_name"),
-        t["country_region_code"],
-        t["group"].alias("territory_group"))
-    build_stage_and_gold("dim_territory", stage, "scd1", "dim_territory",
-                         "dim_territory", ["territory_key"], run_id)
-
-
-try:
-    build()
-except Exception:
-    files_put(f"_cp_err_sq_dim_territory_{run_id}.txt", traceback.format_exc())
-    raise
+# Stage for dim_territory. scd1.
+spark.sql("CREATE SCHEMA IF NOT EXISTS stage")
+spark.sql(f"""
+CREATE OR REPLACE TABLE stage.dim_territory AS
+SELECT territory_id AS territory_key,
+       territory_id,
+       name AS territory_name,
+       country_region_code,
+       `group` AS territory_group
+FROM   `{silver_lh}`.adventureworks.sales_salesterritory
+""")

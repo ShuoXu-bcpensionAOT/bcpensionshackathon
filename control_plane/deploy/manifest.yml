@@ -27,6 +27,11 @@ notebooks:
   - { name: sq_dim_customer,          folder: sourcequery }
   - { name: sq_fact_sales_order,      folder: sourcequery }
   - { name: sq_fact_sales_by_territory, folder: sourcequery }
+  - { name: sq_voc_dim_survey,        folder: sourcequery }
+  - { name: sq_voc_dim_plan,          folder: sourcequery }
+  - { name: sq_voc_dim_question,      folder: sourcequery }
+  - { name: sq_voc_fact_survey_response, folder: sourcequery }
+  - { name: sq_voc_fact_survey_answer,   folder: sourcequery }
 
 # Data pipelines in DEPLOY ORDER (children before main). Builders live in cp_pipeline.py.
 # cp_pl_onprem = generic on-prem ingestion (Copy via the on-premises data gateway → bronze staging,

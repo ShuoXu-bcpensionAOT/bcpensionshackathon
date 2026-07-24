@@ -44,11 +44,25 @@ def deploy(names):
     # so their libraries / JDBC jars are on the classpath. Set by cp_bootstrap.
     env_id = os.getenv("CP_ENV_ID") or None
     attach = set(filter(None, (os.getenv("CP_ENV_ATTACH") or "").split(","))) if env_id else set()
+    # Source-query notebooks are framework-free SparkSQL/PySpark: attach LH_gold (default, where
+    # they write the stage) + LH_silver (read) so they reference tables by name. gold_runner gets
+    # the same attachment because notebookutils.notebook.run executes the child SQ in the PARENT's
+    # lakehouse context. GUIDs from cp_vars.
+    lakehouse_attach = set(MF.NB_FOLDERS.get("sourcequery", [])) | {"gold_runner"}
+    gold_id, silver_id = C.LH.get("gold"), C.LH.get("silver")
     for name in names:
         cells = source_cells(name)
         eid = env_id if name in attach else None
-        FN.upsert_notebook(tok, name, FN.build_ipynb(cells, environment_id=eid))
-        print(f"  deployed {name} ({len(cells)} cell(s))" + ("  [env-attached]" if eid else ""))
+        if name in lakehouse_attach and gold_id and silver_id:
+            ipynb = FN.build_ipynb(cells, default_lakehouse_id=gold_id,
+                                   default_lakehouse_name=C.LAYER_NAMES["gold"],
+                                   known_lakehouse_ids=[silver_id, gold_id], environment_id=eid)
+            tag = "  [lakehouse-attached]"
+        else:
+            ipynb = FN.build_ipynb(cells, environment_id=eid)
+            tag = "  [env-attached]" if eid else ""
+        FN.upsert_notebook(tok, name, ipynb)
+        print(f"  deployed {name} ({len(cells)} cell(s)){tag}")
     import cp_folders                                   # keep the workspace tidy on every deploy
     cp_folders.organize_notebooks(tok, FN.WS)
 

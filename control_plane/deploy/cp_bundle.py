@@ -57,7 +57,7 @@ def _modules():
     mods += [SRC / "connectors" / "__init__.py", SRC / "connectors" / "base.py"]
     mods += _folder("connectors", skip=("base.py",))
     mods += [SRC / "discovery" / "__init__.py"] + _folder("discovery")
-    mods += [SRC / "gold.py"]
+    mods += [SRC / "gold" / "__init__.py"] + _folder("gold")
     mods += [SRC / "workers" / m for m in ("plan.py", "bronze.py", "silver.py", "metadata.py",
                                            "gold.py", "dropbox.py")]
     return mods
@@ -86,13 +86,14 @@ EXPECTED_PUBLIC = {
     "resolve_connector", "run_connector", "register_ingest_connector", "apply_select",
     "_resolve_conn", "_opts", "_conn", "jdbc_read", "_jdbc_driver", "_jdbc_load",
     "discover_objects", "register_discoverer",
-    "gold_write", "build_stage_and_gold",
+    "gold_merge", "register_gold_strategy",
     "plan", "bronze", "silver", "metadata", "gold", "dropbox", "workers",
 }
 EXPECTED_REGISTRY_DECOS = {  # name in a decorator/register call -> proves the file is bundled
     "sqlserver", "postgresql", "mysql", "jdbc", "oracle", "db2", "odbc", "http", "rest_api",
     "api", "statcan_wds", "onprem", "staged",   # ingest connectors
     "trim", "normalize_text", "fill_nulls", "parse_datetime", "mask",  # cleanse
+    "scd1", "scd2", "fact",                      # gold strategies
 }
 
 

@@ -5,7 +5,7 @@ off-cluster for unit tests. On Fabric, import what you need explicitly, e.g.:
 
     from cp import workers                      # workers.bronze(...), workers.silver(...)
     from cp.connectors import run_connector
-    from cp.gold import build_stage_and_gold
+    from cp.gold import gold_merge
 
 For the deployed notebooks this whole package is bundled into the single `cp_framework`
 cell by `deploy/cp_bundle.py`, so `%run cp_framework` exposes every symbol flat (unchanged

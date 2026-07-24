@@ -51,11 +51,14 @@ def _poll_lro(resp, tok):
     return resp
 
 
-def build_ipynb(cells, default_lakehouse_id=None, default_lakehouse_name=None, environment_id=None):
+def build_ipynb(cells, default_lakehouse_id=None, default_lakehouse_name=None, environment_id=None,
+                known_lakehouse_ids=None):
     """cells: list of code strings (or ('md', text) for markdown).
     A code cell whose first line is '# PARAMETERS' is tagged as a Fabric
     parameters cell. environment_id attaches the notebook to a Fabric Environment
-    (so its libraries/driver jars are on the classpath)."""
+    (so its libraries/driver jars are on the classpath). known_lakehouse_ids attaches extra
+    lakehouses so SparkSQL can reference them by name (e.g. source-query notebooks that read
+    LH_silver and write LH_gold)."""
     nb_cells = []
     for c in cells:
         if isinstance(c, tuple) and c[0] == "md":
@@ -78,6 +81,8 @@ def build_ipynb(cells, default_lakehouse_id=None, default_lakehouse_name=None, e
             "default_lakehouse_name": default_lakehouse_name,
             "default_lakehouse_workspace_id": WS,
         }
+        if known_lakehouse_ids:
+            deps["lakehouse"]["known_lakehouses"] = [{"id": g} for g in known_lakehouse_ids]
     if environment_id:
         deps["environment"] = {"environmentId": environment_id, "workspaceId": WS}
     if deps:

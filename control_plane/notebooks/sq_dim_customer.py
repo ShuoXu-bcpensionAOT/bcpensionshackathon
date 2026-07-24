@@ -1,34 +1,19 @@
 # PARAMETERS
 run_id = "manual"
+silver_lh = "LH_silver"
 
 # COMMAND ----------
-%run cp_framework
-
-# COMMAND ----------
-# Source query: silver customer + person + gold dim_territory -> gold dim_customer (SCD2).
-# Depends on dim_territory (attaches the territory surrogate key). History-tracked.
-import traceback
-from pyspark.sql import functions as F
-
-
-def build():
-    cu = read_path(tpath("silver", "sales_customer", "adventureworks"))
-    pe = read_path(tpath("silver", "person_person", "adventureworks"))
-    dt = read_path(tpath("gold", "dim_territory")).select("territory_key", "territory_id")
-    stage = (cu.join(pe, cu["person_id"] == pe["business_entity_id"], "left")
-             .join(dt, cu["territory_id"] == dt["territory_id"], "left")
-             .select(
-                 cu["customer_id"].alias("customer_key"),
-                 cu["customer_id"], cu["store_id"],
-                 dt["territory_key"],
-                 pe["person_type"], pe["first_name"], pe["last_name"],
-                 F.concat_ws(" ", pe["first_name"], pe["last_name"]).alias("full_name")))
-    build_stage_and_gold("dim_customer", stage, "scd2", "dim_customer",
-                         "dim_customer", ["customer_key"], run_id)
-
-
-try:
-    build()
-except Exception:
-    files_put(f"_cp_err_sq_dim_customer_{run_id}.txt", traceback.format_exc())
-    raise
+# Stage for dim_customer — current snapshot of customers + territory key. The gold runner's scd2
+# strategy handles history (closes changed rows, inserts new versions).
+spark.sql("CREATE SCHEMA IF NOT EXISTS stage")
+spark.sql(f"""
+CREATE OR REPLACE TABLE stage.dim_customer AS
+SELECT cu.customer_id AS customer_key,
+       cu.customer_id, cu.store_id,
+       dt.territory_key,
+       pe.person_type, pe.first_name, pe.last_name,
+       concat_ws(' ', pe.first_name, pe.last_name) AS full_name
+FROM      `{silver_lh}`.adventureworks.sales_customer cu
+LEFT JOIN `{silver_lh}`.adventureworks.person_person pe ON cu.person_id = pe.business_entity_id
+LEFT JOIN dbo.dim_territory dt ON cu.territory_id = dt.territory_id
+""")

@@ -1157,27 +1157,66 @@ def _discover_statcan(ds):
                         "response": {"type": "zip_csv", "url_field": "object", "exclude": "_Meta"}})})
     return out
 
-"""Reusable gold writers (called by the source-query notebooks): SCD1/SCD2/fact merge + the
-standard stage-then-gold epilogue."""
+"""Gold table operators — one strategy per gold table type (scd1 / scd2 / fact), mirroring the
+MXData model/strategy pattern. Add a type by dropping a module here decorated with
+@gold_strategy("name") — no edits here. The gold runner calls
+    gold_merge(stage_df, gold_type, gold_table, keys, run_id)
+and never needs to know how a type merges. A strategy is fn(gold_path, stage_df, keys) -> None."""
+from pyspark.sql import functions as F
+
+
+GOLD_STRATEGIES = {}
+
+
+def gold_strategy(*names):
+    """Register a gold merge strategy under one or more type names."""
+    def deco(fn):
+        for n in names:
+            GOLD_STRATEGIES[n] = fn
+        return fn
+    return deco
+
+
+def register_gold_strategy(name, fn):
+    """Imperative registration (equivalent to @gold_strategy)."""
+    GOLD_STRATEGIES[name] = fn
+
+
+def gold_merge(stage_df, gold_type, gold_table, keys, run_id):
+    """Merge a staged DataFrame into its gold table using the strategy for `gold_type`.
+    Stamps gold control columns, dispatches to the strategy, returns the gold row count."""
+    fn = GOLD_STRATEGIES.get(gold_type)
+    if not fn:
+        raise Exception(f"no gold strategy registered for '{gold_type}' (table {gold_table})")
+    stage = (stage_df.withColumn("_gold_run_id", F.lit(run_id))
+                     .withColumn("_gold_updated_at", F.current_timestamp()))
+    path = tpath("gold", gold_table)
+    fn(path, stage, keys)
+    return read_path(path).count()
+
+"""Fact table: merge by key — idempotent reload (re-running restates matched rows, inserts new)."""
+
+
+@gold_strategy("fact")
+def fact(path, stage, keys):
+    merge_upsert(path, stage, keys)
+
+"""Type-1 dimension: upsert by business key — the latest staged row wins, no history."""
+
+
+@gold_strategy("scd1")
+def scd1(path, stage, keys):
+    merge_upsert(path, stage, keys)
+
+"""Type-2 dimension: track history — close the current row when its row-hash changes and insert
+the new version, stamping effective-from/-to and _is_current."""
 from pyspark.sql import functions as F
 from delta.tables import DeltaTable
 
 
 
-def gold_write(stage, gold_type, gold_table, keys, run_id):
-    stage = (stage.withColumn("_gold_run_id", F.lit(run_id))
-                  .withColumn("_gold_updated_at", F.current_timestamp()))
-    path = tpath("gold", gold_table)
-    if gold_type in ("scd1", "fact"):
-        merge_upsert(path, stage, keys)
-    elif gold_type == "scd2":
-        _scd2_merge(stage, path, keys)
-    else:
-        write_path(stage, path, "overwrite")
-    return read_path(path).count()
-
-
-def _scd2_merge(stage, path, keys):
+@gold_strategy("scd2")
+def scd2(path, stage, keys):
     stage = row_hash(stage)
     incoming = (stage.withColumn("_effective_start_ts", F.current_timestamp())
                      .withColumn("_effective_end_ts", F.lit(None).cast("timestamp"))
@@ -1192,7 +1231,7 @@ def _scd2_merge(stage, path, keys):
                .where(incoming["_row_hash"] != cur["_row_hash"])
                .select(*[incoming[k].alias(k) for k in keys]))
     if changed.count():
-        ec = " AND ".join([f"t.`{k}` = s.`{k}`" for k in keys])
+        ec = " AND ".join(f"t.`{k}` = s.`{k}`" for k in keys)
         (tgt.alias("t").merge(changed.alias("s"), ec)
             .whenMatchedUpdate(set={"_is_current": F.lit(False),
                                     "_effective_end_ts": F.current_timestamp()}).execute())
@@ -1200,16 +1239,6 @@ def _scd2_merge(stage, path, keys):
     to_insert = incoming.join(cur_keys, keys, "left_anti")
     if to_insert.count():
         write_path(to_insert, path, "append")
-
-
-def build_stage_and_gold(gold_object_id, stage_df, gold_type, stage_table, gold_table, keys, run_id):
-    """Standard source-query epilogue: persist the stage table, then merge into gold + log."""
-    write_path(stage_df, tpath(STAGE_LH, f"stage_{stage_table}"), "overwrite")
-    cnt = gold_write(stage_df, gold_type, gold_table, keys, run_id)
-    log_object_run(run_id, gold_object_id, "gold", "SUCCEEDED", target_count=cnt,
-                   details={"gold_type": gold_type})
-    print(f"gold {gold_table} ({gold_type}): {cnt} rows")
-    return cnt
 
 """Planner entrypoint: read config_db and return the work-list for a pipeline ForEach via
 notebookutils.notebook.exit. plan_type: objects (bronze/silver) | models (gold) | steps (main)
@@ -1485,34 +1514,45 @@ def metadata(run_id="manual", load_group=1, src_user="", src_password="", **kw):
         files_put(f"_cp_err_metadata_{run_id}.txt", traceback.format_exc())
         raise
 
-"""Gold entrypoint: build ONE model's gold objects in dependency (topo) order by running each
-object's source-query notebook. All logic lives here so the gold_runner notebook is a shell."""
+"""Gold runner: build one model's gold objects in dependency (topo) order. For each object it runs
+the source-query notebook — a framework-free SparkSQL/PySpark transform that writes a **stage**
+table (gold.stage.<stage_table>) — then applies the gold **strategy** for its type (scd1/scd2/fact)
+to merge the stage into gold. The merge logic lives in cp.gold, never in the notebook.
+
+The runner injects the resolved silver lakehouse name (`silver_lh`) so the SQ notebooks reference
+it by name without hardcoding — gold is their attached default lakehouse."""
+import json
 import traceback
 
 
 
 def gold(run_id="manual", model_id=1, **kw):
     mid = int(model_id)
+    sq_params = {"run_id": run_id, "silver_lh": LAYER_NAMES["silver"]}
 
     def _work():
         gobjs = config_query(
-            "SELECT gold_object_id, source_query_notebook FROM dbo.gold_object "
-            "WHERE model_id=? AND is_active=1", (mid,))
-        ids = [g["gold_object_id"] for g in gobjs]
-        nb_by_id = {g["gold_object_id"]: g["source_query_notebook"] for g in gobjs}
+            "SELECT gold_object_id, source_query_notebook, gold_type, stage_table, gold_table, "
+            "business_key_columns_json FROM dbo.gold_object WHERE model_id=? AND is_active=1", (mid,))
+        by_id = {g["gold_object_id"]: g for g in gobjs}
+        ids = list(by_id)
         deps = config_query(
             "SELECT parent_gold_object_id, child_gold_object_id FROM dbo.gold_dependency", ())
         edges = [(d["parent_gold_object_id"], d["child_gold_object_id"]) for d in deps
                  if d["parent_gold_object_id"] in ids and d["child_gold_object_id"] in ids]
         levels = topo_levels(ids, edges)
         print(f"model {mid} gold DAG levels:", levels)
-        order = []
         for level in levels:
             for gid in level:
-                print(f">>> {gid} -> {nb_by_id[gid]}")
-                notebookutils.notebook.run(nb_by_id[gid], 1800, {"run_id": run_id})
-                order.append(gid)
-        print("gold build order:", order)
+                g = by_id[gid]
+                print(f">>> {gid}: stage via {g['source_query_notebook']}")
+                notebookutils.notebook.run(g["source_query_notebook"], 1800, sq_params)   # writes stage
+                stage = read_path(tpath("gold", g["stage_table"], "stage"))                # read stage
+                keys = json.loads(g["business_key_columns_json"])
+                cnt = gold_merge(stage, g["gold_type"], g["gold_table"], keys, run_id)      # apply strategy
+                log_object_run(run_id, gid, "gold", "SUCCEEDED", target_count=cnt,
+                               details={"gold_type": g["gold_type"]})
+                print(f"    gold {g['gold_table']} ({g['gold_type']}): {cnt} rows")
 
     try:
         _work()
