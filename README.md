@@ -22,8 +22,11 @@ Pipelines over param-driven Spark notebooks.
 - **Modular engine** — the runtime is a package (`control_plane/src/cp/`): one file per connector,
   auto-registered; the pipeline notebooks are 3-cell shells. A bundler flattens it into the
   `%run cp_framework` cell (and builds a wheel). Add a connector = drop a file. See `docs/DESIGN.md`.
-- **Pluggable connectors** — SQL Server / Postgres / MySQL / Oracle / DB2 / ODBC and one generalized
-  **HTTP/API** connector; add a source with config only.
+- **Pluggable connectors** — SQL Server / Postgres / MySQL / Oracle / DB2 / ODBC, a generalized
+  **HTTP/API** connector, **Microsoft Entra** (Graph), and an **ad-hoc file** connector; add a source with config only.
+- **Event-driven file dropbox** — drop csv/txt/xlsx into `LH_Filedrop/Files/newfile/<schema>/` and a
+  OneLake event trigger loads each (one table per file / Excel tab) → bronze append → silver
+  row-hash dedup → archive by date; idempotent. See `control_plane/docs/DESIGN.md` §8.
 - **Connections in Key Vault** — `datasource.secret_name`; the `cp_connection_builder` wizard writes
   the secret *and* registers the datasource. No secrets (or hosts) in git or the variable library.
 - **Auto-discovery** — the metadata step registers source objects (`is_active=0`); you review + activate.
