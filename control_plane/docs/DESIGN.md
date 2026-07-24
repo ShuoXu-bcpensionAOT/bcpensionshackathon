@@ -53,7 +53,9 @@ control_plane/
     config_db.py               #   config_conn/query/exec/exec_many (pyodbc + AAD)
     transform.py               #   business_cols, row_hash, merge_upsert
     audit.py                   #   run/object logging, watermarks, seed_control_tables, SCHEMAS
-    gold.py                    #   gold_write, scd2 merge, build_stage_and_gold
+    gold/                      #   GOLD TABLE OPERATOR — one strategy file per type — auto-registered
+      __init__.py              #     registry + @gold_strategy + gold_merge(stage,type,table,keys,run_id)
+      scd1.py  scd2.py  fact.py
     connectors/                #   ONE FILE PER SOURCE — auto-registered
       __init__.py  base.py     #     registry + @ingest_connector + resolve/run_connector; shared helpers
       jdbc.py odbc.py http.py oracle.py db2.py staged.py entra.py file.py
@@ -121,6 +123,7 @@ it from a `cleanse_rule` row.
 | Connector | `connectors/*.py` | `@ingest_connector("name", …)` | `(o, user, password) -> DataFrame` |
 | Discoverer | `discovery/*.py` | `@discoverer("connector")` | `(datasource) -> [candidate dicts]` |
 | Cleanse fn | `cleanse/*.py` | `@cleanse_fn("name")` | `(df, cols, params) -> df` |
+| Gold strategy | `gold/*.py` | `@gold_strategy("type")` | `(gold_path, stage_df, keys) -> None` |
 
 ---
 
@@ -151,8 +154,17 @@ pipeline can pass any subset (e.g. `load_group` as a string is coerced with `int
 | `metadata_worker` | `workers.metadata(run_id, load_group, …)` | discover objects (is_active=0) + column-drift snapshot |
 | `bronze_worker` | `workers.bronze(run_id, object_json, …)` | one object: connector → select → control cols → bronze |
 | `silver_worker` | `workers.silver(run_id, object_json)` | dedupe by key, cleanse, DQ+quarantine, upsert |
-| `gold_runner` | `workers.gold(run_id, model_id)` | run the model's `sq_*` notebooks in topo order |
+| `gold_runner` | `workers.gold(run_id, model_id)` | per gold object (topo order): run its SQ notebook → read the stage → apply the type's strategy |
 | `dropbox_worker` | `workers.dropbox(run_id, file_path)` | register + load ONE dropped file (or scan all of `newfile/`) — see §8 |
+
+**Gold build — stage then strategy.** A model's gold tables build in dependency order. For each
+`gold_object`, the runner runs its **source-query notebook** — a *framework-free* SparkSQL/PySpark
+transform that reads silver and writes a **stage** table (`CREATE OR REPLACE TABLE stage.<t> AS
+SELECT …`) — then reads that stage and applies the **strategy** for the object's `gold_type`
+(scd1/scd2/fact) to merge it into gold. The merge lives in `cp/gold/`, never in the notebook, so
+SQ notebooks stay pure transforms. Deploy attaches `LH_silver`+`LH_gold` to the SQ notebooks (and
+to `gold_runner`, since `notebook.run` executes the child in the parent's lakehouse context); the
+silver name is injected from `cp_vars`, so it's rename-safe.
 
 ---
 
