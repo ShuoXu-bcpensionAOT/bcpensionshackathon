@@ -200,7 +200,7 @@ def build_onprem(tok):
     so the extract is the pipeline's job. Requires an on-premises data gateway + a Fabric connection
     (put its GUID in the on-prem datasource's connection_json.connection_id)."""
     plan, worker = nbid(tok, "cp_plan"), nbid(tok, "bronze_worker")
-    bronze_lh = FN.find_item(tok, "bronze", "Lakehouse")
+    bronze_lh = FN.find_item(tok, MF.LAKEHOUSE_NAMES["bronze"], "Lakehouse")   # rename-proof (cp_vars)
     conn_id = _onprem_connection_id()
     params = {"load_group": plit(1, "int"), "run_id": plit("manual")}
     plan_act = nb("Plan", plan, {

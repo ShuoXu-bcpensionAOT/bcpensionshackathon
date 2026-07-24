@@ -4,6 +4,7 @@ Provides the deploy inventory (lakehouses, sql db, variable library, notebooks +
 folders in order, pipelines, superseded items) to cp_deploy / cp_pipeline / cp_bootstrap.
 Standalone (does not import cp_common) so importing it has no side effects.
 """
+import json
 import os
 from pathlib import Path
 
@@ -31,3 +32,11 @@ ENVIRONMENT = _M.get("environment")
 NB_FOLDERS = {}                                         # {folder: [names]}
 for _n in NOTEBOOKS:
     NB_FOLDERS.setdefault(_n["folder"], []).append(_n["name"])
+
+# logical layer -> physical lakehouse name, from the cp_vars variable library (config-as-code).
+# Deploy tooling that must bind a lakehouse GUID (e.g. Copy-activity sinks) resolves the name here
+# so it always tracks the current names — no hardcoded 'bronze' that breaks after a rename.
+_VARS = json.loads((REPO / "control_plane" / "variable_library" / "cp_vars.VariableLibrary"
+                    / "variables.json").read_text(encoding="utf-8"))
+LAKEHOUSE_NAMES = {v["name"][:-len("_lakehouse")]: v["value"]
+                   for v in _VARS["variables"] if v["name"].endswith("_lakehouse")}
