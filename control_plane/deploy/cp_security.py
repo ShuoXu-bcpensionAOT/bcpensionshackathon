@@ -23,6 +23,7 @@ import requests
 
 import cp_auth
 import cp_common as C
+import cp_manifest as MF
 
 API = "https://api.fabric.microsoft.com/v1"
 
@@ -32,6 +33,9 @@ def _H(t):
 
 
 def _lakehouse(t, wid, name):
+    # security_policy.lakehouse stores the LOGICAL layer (e.g. 'silver'); resolve it to the current
+    # physical name via cp_vars so a lakehouse rename needs no policy edits. A physical name passes through.
+    name = MF.LAKEHOUSE_NAMES.get(name, name)
     for lh in requests.get(f"{API}/workspaces/{wid}/lakehouses", headers=_H(t)).json()["value"]:
         if lh["displayName"] == name:
             return lh

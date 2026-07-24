@@ -15,6 +15,7 @@ import requests
 from dotenv import load_dotenv
 
 import cp_auth
+import cp_manifest as MF
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
@@ -23,8 +24,9 @@ TENANT = os.getenv("AZURE_TENANT_ID")
 WS_NAME = os.getenv("CP_TARGET_WORKSPACE") or os.getenv("FABRIC_WORKSPACE_NAME", "HackathonShuo-DEV")
 FABRIC_API = "https://api.fabric.microsoft.com/v1"
 
-# logical layer -> physical lakehouse name
-LAYER_NAMES = {"config": "metadata", "bronze": "bronze", "silver": "silver", "gold": "gold"}
+# logical layer -> physical lakehouse name, from cp_vars (config-as-code) — never hardcoded,
+# so a lakehouse rename is picked up here just like it is in the runtime.
+LAYER_NAMES = MF.LAKEHOUSE_NAMES
 
 # Repo root: auto-detect when running from <repo>/control_plane/deploy/ (CI/checkout),
 # else fall back to CP_REPO env or the local clone.
