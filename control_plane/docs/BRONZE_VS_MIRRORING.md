@@ -60,6 +60,7 @@ bronze*, after which the two converge.
 | **Data quality / cleansing** | Not built in (do it downstream) | **First-class** — `dq_rule`, `cleanse_rule`, quarantine on silver |
 | **Sensitive-data control** | **Everything lands raw** in OneLake (all rows/columns, unmasked) | Mask/exclude **at ingest** — sensitive columns need never land raw |
 | **Source prerequisites** | **Invasive**: ARCHIVELOG, LogMiner, supplemental logging (DB + per-table), CDC grants (`LOGMINING`, `FLASHBACK ANY TABLE`, …) | **Minimal**: a read account with `SELECT` |
+| **Connectivity (on-prem Oracle)** | Connects **only via an on-premises data gateway** — the existing **VNet gateway (PBI) can't be reused**; stand up a **dedicated** gateway, HA-sized for **continuous 24/7 CDC** | Data-pipeline **Copy** connection binds to **either** an on-prem **or the existing VNet gateway** (if Oracle is reachable through that VNet) — **reuse existing infra**; gateway is busy only during **scheduled loads** |
 | **Schema / type coverage** | Relational scalars only; **no LOBs / XML / complex types**; column DDL add/drop/rename only (no type changes) | Any type (complex columns pruned/handled); schema-drift **detected + logged** |
 | **Table constraints** | Needs a **PK or unique index**; table name < 30 chars; ≤ 1000 tables | None — loads any table; keys are config, not a requirement |
 | **History (SCD)** | Mirror = current state of source | Silver keeps latest; **gold does SCD1/SCD2/fact** |
@@ -68,6 +69,16 @@ bronze*, after which the two converge.
 | **Ops model** | Microsoft-managed pipeline; **dedicated gateway VM**, archive-log retention, reseed memory spikes | You operate it; retries, capacity, and DQ are yours to tune |
 | **Maturity** | Oracle mirroring is **Preview** | In production here today |
 | **Cost** | Mirrored replica storage has a free allowance (capacity-based); low compute | Spark compute per run + storage |
+
+> **Gateway note (BCPC-specific).** We already run a **VNet data gateway** for some Power BI
+> reports. That gateway **cannot serve Fabric Mirroring** — mirroring reaches a private/on-prem
+> source through the **on-premises data gateway** only, so mirroring Oracle means provisioning a
+> **new, dedicated** gateway (installed + patched + clustered for HA, running **continuously** for
+> always-on CDC). Our framework's on-prem path is a Data-pipeline **Copy**, whose connection can run
+> through **either** an on-prem gateway **or the existing VNet gateway** (assuming the Oracle host is
+> reachable through that VNet) — so it can **reuse infrastructure we already operate**, and only
+> during scheduled load windows. *(Fabric gateway support for mirroring is still evolving — confirm
+> against current docs for the Oracle connector and our exact network topology before sizing.)*
 
 ---
 
@@ -135,6 +146,8 @@ connector → bronze → silver → gold.
   index, ≤ 1000 tables, name-length limits. Any table that misses these simply won't mirror.
 - **Still Preview** for Oracle — not yet a fit for a production system of record.
 - You still build **silver/gold** — mirroring is not a substitute for the modelling layer.
+- **New dedicated gateway** — mirroring uses the on-premises data gateway only; our existing **VNet
+  gateway can't be reused**, so it's fresh infra to stand up, patch, and HA-cluster for 24/7 CDC.
 - Ops caveats: dedicated gateway VM, archive-log retention (~24h), memory spikes on large reseeds.
 
 ### Our framework
@@ -143,6 +156,8 @@ connector → bronze → silver → gold.
   land**, DQ + quarantine, schema-drift detection, and code-driven security (CLS/RLS/DDM). For a
   pension org handling PII, keeping sensitive data out of raw OneLake is a material advantage.
 - **No source changes** — only a `SELECT` account; nothing to enable on the Oracle side.
+- **Reuses existing connectivity** — the on-prem Copy can run through our current **VNet gateway**
+  (no new dedicated gateway to provision/HA), and only during scheduled loads, not 24/7.
 - **Universal** — the same registry ingests Oracle, SQL Server, APIs, files (dropbox), and
   gateway-staged on-prem, so one pattern covers the whole estate, not just mirror-eligible DBs.
 - **Config-as-code + promotion** — declared once, promoted across environments, lineage in config.
@@ -225,6 +240,9 @@ pension corporation:
 6. **Simpler promotion (§5).** The whole medallion promotes as one config-as-code unit; mirroring
    promotes only the replica config and leaves per-env connections, DBA CDC enablement, manual
    start, and re-seed as a checklist repeated in each workspace.
+7. **No new gateway.** The framework's on-prem Copy can reuse our **existing VNet gateway**;
+   mirroring requires a **dedicated on-premises data gateway** (the VNet one can't serve it), running
+   24/7 for CDC — extra infrastructure to provision, secure, and HA-cluster (§2).
 
 **But adopt Mirroring selectively, as a hybrid**, once it's GA and where it clearly wins: for a
 **small set of clean, high-value tables that genuinely need near-real-time**, mirror them as bronze
