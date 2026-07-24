@@ -7,6 +7,11 @@ Each csv/txt file -> one table; each xlsx/xls sheet -> its own table (<file>_<ta
 Bronze APPENDS every drop; silver dedups on the full row hash. Idempotent via the
 dropbox_ledger (skip re-drops of identical content) AND the silver row-hash dedup (so even a
 duplicate event can't create duplicate rows). Processed files are moved to archive/Y/M/D/<ts>/.
+
+Snapshot / soft-delete mode: name the file `<name>__key=<col>[,<col>].<ext>` and each drop is
+treated as a full snapshot keyed on <col> — silver dedups on that business key (latest values
+win) and flags keys that disappear between drops as _is_deleted (auditable deletes) instead of
+using the keyless row-hash dedup. Re-drop the SAME filename to feed the next snapshot.
 """
 import json
 import os
@@ -137,7 +142,18 @@ def _run(file_path, run_id):
     fname = parts[-1]
     schema = _norm_ident(parts[1]) if len(parts) >= 3 else "dbo"
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-    base = _norm_ident(fname.rsplit(".", 1)[0])
+    stem = fname.rsplit(".", 1)[0]
+    # Filename convention `<name>__key=<col>[,<col>].<ext>` opts the file into snapshot semantics:
+    # silver dedups on that BUSINESS KEY (keeping the latest values) and flags rows that vanish
+    # between drops as soft-deletes (_is_deleted). Without it, the default keyless row-hash dedup
+    # applies. The key is kept raw here (silver snake()s it, same as the columns) so it matches
+    # the file's header. Re-dropping the same filename carries the same key -> deletes are detected.
+    key_cols = None
+    if "__key=" in stem:
+        name_part, key_part = stem.split("__key=", 1)
+        key_cols = [k.strip() for k in key_part.split(",") if k.strip()]
+        stem = name_part
+    base = _norm_ident(stem)
     abfss = f"abfss://{WS_ID}@onelake.dfs.fabric.microsoft.com/{guid}/Files/{rel}"
 
     local = _download(abfss, base)
@@ -164,8 +180,11 @@ def _run(file_path, run_id):
     loaded = 0
     for tbl, opts in objs:
         opts["landed"] = {"table": tbl}                      # clean <schema>.<tbl>, no dbo_ prefix
+        if key_cols:                                         # snapshot semantics (see __key= above)
+            opts["delete_detection"] = "soft"
         oid = _norm_ident(f"dropbox_{schema}_{tbl}")
-        keys_json, opts_json = json.dumps(["_row_hash"]), json.dumps(opts)
+        keys_json = json.dumps(key_cols if key_cols else ["_row_hash"])
+        opts_json = json.dumps(opts)
         _register_object(oid, sid, tbl, keys_json, opts_json)
         o = {"object_id": oid, "source_id": sid, "source_name": schema, "source_schema": None,
              "source_table": tbl, "connector": "file", "secret_name": None, "load_type": "append",

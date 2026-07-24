@@ -1361,6 +1361,17 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
         oid = o["object_id"]
         schema, table = landed_table(o)                        # schema-enabled: (schema, table)
         keys = [snake(k) for k in json.loads(o["key_columns_json"])]
+        try:
+            opts = json.loads(o.get("source_options_json") or "{}") or {}
+        except (ValueError, TypeError):
+            opts = {}
+        # Soft-delete detection: when the source is loaded as full snapshots appended to bronze
+        # (e.g. the dropbox, or a snapshot-append source), a business key present in an EARLIER
+        # snapshot but absent from the LATEST one has been deleted at source. We keep the row (last
+        # known values) and flag it (_is_deleted / _deleted_at) rather than dropping it — auditable
+        # deletes. Needs a real business key (not the row-hash keyless dedup).
+        soft_delete = str(opts.get("delete_detection", "")).lower() == "soft" and keys \
+            and keys != ["_row_hash"]
         bp = tpath("bronze", table, schema)
         if not delta_exists(bp):
             print(f"skip {schema}.{table}: no bronze")
@@ -1371,6 +1382,12 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
         sdf = df.select([F.col(c).alias(snake(c)) for c in biz] + [ingest_ts.alias("_bronze_ingest_ts")])
         if "rowguid" in sdf.columns:
             sdf = sdf.drop("rowguid")
+        # Keys present in the latest snapshot (the max ingest batch) — everything else is a delete.
+        current_keys_df, max_ts = None, None
+        if soft_delete and all(k in sdf.columns for k in keys):
+            max_ts = sdf.agg(F.max("_bronze_ingest_ts")).first()[0]
+            current_keys_df = sdf.where(F.col("_bronze_ingest_ts") == F.lit(max_ts)) \
+                                 .select(*keys).distinct()
         if all(k in sdf.columns for k in keys):
             w = Window.partitionBy(*keys).orderBy(F.col("_bronze_ingest_ts").desc())
             sdf = sdf.withColumn("_rn", F.row_number().over(w)).where(F.col("_rn") == 1).drop("_rn")
@@ -1400,6 +1417,17 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
                        tpath(QUAR_LH, f"quarantine_{table}", schema), mode="overwrite")
         good = row_hash(good).withColumn("_silver_run_id", F.lit(run_id)) \
                              .withColumn("_silver_updated_at", F.current_timestamp())
+        # Flag soft-deletes: keys not in the latest snapshot are gone at source. Row is retained
+        # (last known values) with _is_deleted=true; a key that re-appears later flips back to false.
+        del_cnt = 0
+        if current_keys_df is not None:
+            good = good.join(current_keys_df.withColumn("_present", F.lit(True)), keys, "left")
+            good = good.withColumn("_is_deleted", F.col("_present").isNull()) \
+                       .withColumn("_deleted_at",
+                                   F.when(F.col("_present").isNull(), F.lit(max_ts))
+                                    .otherwise(F.lit(None).cast("timestamp"))) \
+                       .drop("_present")
+            del_cnt = good.where(F.col("_is_deleted")).count()
         sp = tpath("silver", table, schema)
         if all(k in good.columns for k in keys):
             # dedup on the key set before merge so a merge never sees duplicate source keys — this
@@ -1410,7 +1438,8 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
         s_cnt = read_path(sp).count()
         log_object_run(run_id, oid, "silver", "SUCCEEDED", source_count=sdf.count(),
                        target_count=s_cnt, quarantine_count=q_cnt)
-        print(f"silver {schema}.{table}: {s_cnt} rows, quarantined {q_cnt}")
+        tail = f", deleted {del_cnt}" if current_keys_df is not None else ""
+        print(f"silver {schema}.{table}: {s_cnt} rows, quarantined {q_cnt}{tail}")
 
     try:
         _work()
@@ -1569,6 +1598,11 @@ Each csv/txt file -> one table; each xlsx/xls sheet -> its own table (<file>_<ta
 Bronze APPENDS every drop; silver dedups on the full row hash. Idempotent via the
 dropbox_ledger (skip re-drops of identical content) AND the silver row-hash dedup (so even a
 duplicate event can't create duplicate rows). Processed files are moved to archive/Y/M/D/<ts>/.
+
+Snapshot / soft-delete mode: name the file `<name>__key=<col>[,<col>].<ext>` and each drop is
+treated as a full snapshot keyed on <col> — silver dedups on that business key (latest values
+win) and flags keys that disappear between drops as _is_deleted (auditable deletes) instead of
+using the keyless row-hash dedup. Re-drop the SAME filename to feed the next snapshot.
 """
 import json
 import os
@@ -1691,7 +1725,18 @@ def _run(file_path, run_id):
     fname = parts[-1]
     schema = _norm_ident(parts[1]) if len(parts) >= 3 else "dbo"
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-    base = _norm_ident(fname.rsplit(".", 1)[0])
+    stem = fname.rsplit(".", 1)[0]
+    # Filename convention `<name>__key=<col>[,<col>].<ext>` opts the file into snapshot semantics:
+    # silver dedups on that BUSINESS KEY (keeping the latest values) and flags rows that vanish
+    # between drops as soft-deletes (_is_deleted). Without it, the default keyless row-hash dedup
+    # applies. The key is kept raw here (silver snake()s it, same as the columns) so it matches
+    # the file's header. Re-dropping the same filename carries the same key -> deletes are detected.
+    key_cols = None
+    if "__key=" in stem:
+        name_part, key_part = stem.split("__key=", 1)
+        key_cols = [k.strip() for k in key_part.split(",") if k.strip()]
+        stem = name_part
+    base = _norm_ident(stem)
     abfss = f"abfss://{WS_ID}@onelake.dfs.fabric.microsoft.com/{guid}/Files/{rel}"
 
     local = _download(abfss, base)
@@ -1718,8 +1763,11 @@ def _run(file_path, run_id):
     loaded = 0
     for tbl, opts in objs:
         opts["landed"] = {"table": tbl}                      # clean <schema>.<tbl>, no dbo_ prefix
+        if key_cols:                                         # snapshot semantics (see __key= above)
+            opts["delete_detection"] = "soft"
         oid = _norm_ident(f"dropbox_{schema}_{tbl}")
-        keys_json, opts_json = json.dumps(["_row_hash"]), json.dumps(opts)
+        keys_json = json.dumps(key_cols if key_cols else ["_row_hash"])
+        opts_json = json.dumps(opts)
         _register_object(oid, sid, tbl, keys_json, opts_json)
         o = {"object_id": oid, "source_id": sid, "source_name": schema, "source_schema": None,
              "source_table": tbl, "connector": "file", "secret_name": None, "load_type": "append",

@@ -256,6 +256,17 @@ no `file_path`, `workers.dropbox` **scans** all of `newfile/` — the manual/sch
 > Event triggers are inherently *per file* (Fabric emits one event per created file and can't
 > coalesce them). For a single run that batches everything, schedule the scan instead.
 
+**Snapshot / soft-delete mode.** Name a file `<name>__key=<col>[,<col>].<ext>` and each drop is
+treated as a **full snapshot** keyed on `<col>` instead of the keyless row-hash dedup. The dropbox
+registers the object with that business key + `source_options_json.delete_detection = "soft"`;
+silver then (a) dedups on the key keeping the **latest** values, and (b) reconciles against the
+latest snapshot — a key present in an earlier drop but **absent from the newest** one is retained
+with `_is_deleted = true` / `_deleted_at` set (a key that reappears later flips back). Re-drop the
+**same filename** to feed the next snapshot. This is the general `delete_detection` capability
+(silver worker) surfaced through the dropbox; any snapshot-append source can set the same option.
+Bronze keeps every snapshot, so "present in batch *N*, gone in *N+1*" stays a plain query — deletes
+are **auditable**, not silent (see `docs/BRONZE_VS_MIRRORING.md` §3).
+
 ---
 
 ## 9. Design principles

@@ -27,7 +27,9 @@ Pipelines over param-driven Spark notebooks.
   **HTTP/API** connector, **Microsoft Entra** (Graph), and an **ad-hoc file** connector; add a source with config only.
 - **Event-driven file dropbox** — drop csv/txt/xlsx into `LH_Filedrop/Files/newfile/<schema>/` and a
   OneLake event trigger loads each (one table per file / Excel tab) → bronze append → silver
-  row-hash dedup → archive by date; idempotent. See `control_plane/docs/DESIGN.md` §8.
+  row-hash dedup → archive by date; idempotent. Name a file `<name>__key=<col>.csv` for snapshot
+  semantics: silver keys on `<col>`, keeps latest, and flags removed rows `_is_deleted` (auditable
+  soft-delete). See `control_plane/docs/DESIGN.md` §8.
 - **Connections in Key Vault** — `datasource.secret_name`; the `cp_connection_builder` wizard writes
   the secret *and* registers the datasource. No secrets (or hosts) in git or the variable library.
 - **Auto-discovery** — the metadata step registers source objects (`is_active=0`); you review + activate.
