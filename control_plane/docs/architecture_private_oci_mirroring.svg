@@ -102,7 +102,7 @@
   <rect class="tile" x="760" y="250" width="200" height="82" rx="10"/>
   <g transform="translate(776,281)"><g stroke="#0E7C5F" stroke-width="1.5" fill="none"><path d="M4,7 h9 v-2.5 l4,4 l-4,4 v-2.5 h-9 Z" fill="#E6F4EF"/><path d="M20,17 h-9 v2.5 l-4,-4 l4,-4 v2.5 h9 Z" fill="#E6F4EF"/></g></g>
   <text class="tt" x="812" y="284">Fabric Mirroring</text>
-  <text class="ts" x="812" y="302">managed CDC · Preview</text>
+  <text class="ts" x="812" y="302">managed CDC · GA 2026</text>
 
   <rect x="760" y="362" width="512" height="150" rx="10" fill="#FFFFFF" stroke="#BFD8CE" stroke-width="1.3"/>
   <text x="772" y="382" font-size="11" font-weight="600" fill="#0B6B52">OneLake</text>

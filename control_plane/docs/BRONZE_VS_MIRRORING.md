@@ -10,7 +10,7 @@ BC Pension Corporation.
 > default** for BCPC (governance, masking, subsetting, DQ, promotion, and no invasive changes to the
 > source). Reach for **Mirroring on specific tables** when near-real-time latency is a genuine
 > requirement *and* the table is cleanly relational *and* the Oracle DBA can enable CDC — then feed
-> the mirror into our existing silver/gold. Mirroring for Oracle is still **Preview**.
+> the mirror into our existing silver/gold. Mirroring for Oracle is now **GA** (2026).
 
 ---
 
@@ -67,7 +67,7 @@ bronze*, after which the two converge.
 | **Source coverage** | Per-source connector (Oracle, SQL Server, Snowflake, PostgreSQL, Cosmos… + Open Mirroring) | **Any** — jdbc / oracle / db2 / odbc / **HTTP-API** / files / on-prem-staged, one registry |
 | **Promotion (DEV→UAT→PROD)** | Git/pipelines track the mirror *item* only; connection, **manual start**, **re-seed**, and views are per-env manual (see §5) | **Whole medallion is config-as-code** — sources+DQ+gold+security promote together; connection = a KV secret per env |
 | **Ops model** | Microsoft-managed pipeline; **dedicated gateway VM**, archive-log retention, reseed memory spikes | You operate it; retries, capacity, and DQ are yours to tune |
-| **Maturity** | Oracle mirroring is **Preview** | In production here today |
+| **Maturity** | Oracle mirroring is **GA** (2026); OCI + Oracle Database@Azure supported | In production here today |
 | **Cost** | Mirrored replica storage has a free allowance (capacity-based); low compute | Spark compute per run + storage |
 
 > **Gateway note (BCPC-specific).** We already run a **VNet data gateway** for some Power BI
@@ -144,7 +144,6 @@ connector → bronze → silver → gold.
   entirely downstream, and the raw copy still exists.
 - **Coverage gaps** — no LOB/XML/complex types, no type-change DDL, tables must have a PK/unique
   index, ≤ 1000 tables, name-length limits. Any table that misses these simply won't mirror.
-- **Still Preview** for Oracle — not yet a fit for a production system of record.
 - You still build **silver/gold** — mirroring is not a substitute for the modelling layer.
 - **New dedicated gateway** — mirroring uses the on-premises data gateway only; our existing **VNet
   gateway can't be reused**, so it's fresh infra to stand up, patch, and HA-cluster for 24/7 CDC.
@@ -234,7 +233,9 @@ pension corporation:
    system of record.
 3. **One pattern for the whole estate.** The same control plane already ingests Oracle, APIs, and
    files; mirroring only covers mirror-eligible databases and would run alongside, not replace it.
-4. **Maturity.** Oracle mirroring is **Preview**; the framework is in production here now.
+4. **Maturity is no longer the differentiator.** Oracle mirroring is now **GA** (2026), so
+   readiness isn't the reason to prefer one path — the decision rests on the factors above
+   (governance/PII, no source changes, one pattern, gateway reuse), not on Preview status.
 5. **Latency is usually fine.** Pension reporting rarely needs sub-minute freshness; scheduled or
    event-triggered batch meets the need.
 6. **Simpler promotion (§5).** The whole medallion promotes as one config-as-code unit; mirroring
@@ -244,7 +245,7 @@ pension corporation:
    mirroring requires a **dedicated on-premises data gateway** (the VNet one can't serve it), running
    24/7 for CDC — extra infrastructure to provision, secure, and HA-cluster (§2).
 
-**But adopt Mirroring selectively, as a hybrid**, once it's GA and where it clearly wins: for a
+**But adopt Mirroring selectively, as a hybrid** (it's GA now), where it clearly wins: for a
 **small set of clean, high-value tables that genuinely need near-real-time**, mirror them as bronze
 and **feed the mirror straight into our existing silver/gold** (dedup, DQ, masking, star). That
 captures mirroring's freshness while keeping our governance and modelling. It's additive — the
@@ -260,6 +261,7 @@ replacement for the silver/gold layer.
 *Sources:* [Mirror Oracle databases in Fabric](https://learn.microsoft.com/en-us/fabric/mirroring/oracle) ·
 [Oracle mirroring limitations](https://learn.microsoft.com/en-us/fabric/mirroring/oracle-limitations) ·
 [CI/CD for mirrored databases](https://learn.microsoft.com/en-us/fabric/mirroring/mirrored-database-cicd) ·
-[Mirroring for Oracle (Preview) announcement](https://blog.fabric.microsoft.com/en-GB/blog/mirroring-for-oracle-in-microsoft-fabric-preview/) ·
+[Mirroring for Oracle launch announcement](https://blog.fabric.microsoft.com/en-GB/blog/mirroring-for-oracle-in-microsoft-fabric-preview/) ·
 [Open Mirroring partner ecosystem](https://learn.microsoft.com/en-us/fabric/mirroring/open-mirroring-partners-ecosystem).
-Oracle mirroring is Preview as of this writing; verify limits before committing.
+Oracle mirroring is **GA** as of 2026 (the Microsoft Learn docs no longer carry a Preview label);
+verify current limits and supported Oracle environments before committing.
