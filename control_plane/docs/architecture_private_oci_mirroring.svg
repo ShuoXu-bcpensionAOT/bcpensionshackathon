@@ -74,14 +74,15 @@
   <!-- DBA prereq callout -->
   <rect x="58" y="470" width="216" height="180" rx="10" fill="#FBEEDD" stroke="#D98A2B" stroke-width="1.2"/>
   <g transform="translate(70,486)"><path d="M11,2 L21,20 H1 Z" fill="none" stroke="#B4531A" stroke-width="1.6"/><line x1="11" y1="9" x2="11" y2="14" stroke="#B4531A" stroke-width="1.6"/><circle cx="11" cy="17" r="1.1" fill="#B4531A"/></g>
-  <text x="100" y="502" font-size="12" font-weight="700" fill="#B4531A">DBA prerequisites</text>
-  <text x="74" y="526" font-size="11" fill="#7A4A1A">• ARCHIVELOG mode</text>
-  <text x="74" y="546" font-size="11" fill="#7A4A1A">• LogMiner enabled</text>
-  <text x="74" y="566" font-size="11" fill="#7A4A1A">• supplemental logging</text>
-  <text x="74" y="582" font-size="11" fill="#7A4A1A">  (database + per-table)</text>
-  <text x="74" y="602" font-size="11" fill="#7A4A1A">• CDC grants (LOGMINING…)</text>
-  <text x="74" y="624" font-size="10.5" fill="#9A6A34">Invasive change on a production</text>
-  <text x="74" y="638" font-size="10.5" fill="#9A6A34">system of record.</text>
+  <text x="100" y="500" font-size="12" font-weight="700" fill="#B4531A">DBA prerequisites</text>
+  <text x="74" y="521" font-size="11" fill="#7A4A1A">• ARCHIVELOG mode</text>
+  <text x="74" y="538" font-size="11" fill="#7A4A1A">• LogMiner + supplemental log</text>
+  <text x="74" y="552" font-size="11" fill="#7A4A1A">  (database + per-table)</text>
+  <text x="74" y="569" font-size="11" fill="#7A4A1A">• grants: LOGMINING,</text>
+  <text x="74" y="583" font-size="11" fill="#7A4A1A">  FLASHBACK, SELECT ANY TABLE</text>
+  <text x="74" y="600" font-size="11" fill="#7A4A1A">• read-write only (no standby)</text>
+  <text x="74" y="622" font-size="10.5" fill="#9A6A34">Broad, invasive changes to a</text>
+  <text x="74" y="636" font-size="10.5" fill="#9A6A34">production system of record.</text>
 
   <!-- Azure tiles -->
   <rect class="tile" x="496" y="272" width="196" height="104" rx="10" stroke="#C0392B" stroke-width="1.8"/>

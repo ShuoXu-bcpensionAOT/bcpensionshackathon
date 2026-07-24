@@ -59,7 +59,7 @@ bronze*, after which the two converge.
 | **Transformation at ingest** | **None** — raw 1:1 copy | Full — `filters`/`select` (subset rows & columns), typing, rename |
 | **Data quality / cleansing** | Not built in (do it downstream) | **First-class** — `dq_rule`, `cleanse_rule`, quarantine on silver |
 | **Sensitive-data control** | **Everything lands raw** in OneLake (all rows/columns, unmasked) | Mask/exclude **at ingest** — sensitive columns need never land raw |
-| **Source prerequisites** | **Invasive**: ARCHIVELOG, LogMiner, supplemental logging (DB + per-table), CDC grants (`LOGMINING`, `FLASHBACK ANY TABLE`, …) | **Minimal**: a read account with `SELECT` |
+| **Source prerequisites** | **Invasive**: ARCHIVELOG, LogMiner, supplemental logging (DB + per-table), and **broad grants** — `LOGMINING`, `FLASHBACK ANY TABLE`, **`SELECT ANY TABLE`**, `SELECT ANY DICTIONARY` (instance-wide read); source must be in **read-write mode** (LogMiner can't mirror a read-only standby) | **Minimal**: `SELECT` on just the target tables — and it can read a **read-only standby / DR replica** |
 | **Connectivity (on-prem Oracle)** | Connects **only via an on-premises data gateway** — the existing **VNet gateway (PBI) can't be reused**; stand up a **dedicated** gateway, HA-sized for **continuous 24/7 CDC** | Data-pipeline **Copy** connection binds to **either** an on-prem **or the existing VNet gateway** (if Oracle is reachable through that VNet) — **reuse existing infra**; gateway is busy only during **scheduled loads** |
 | **Schema / type coverage** | Relational scalars only; **no LOBs / XML / complex types**; column DDL add/drop/rename only (no type changes) | Any type (complex columns pruned/handled); schema-drift **detected + logged** |
 | **Table constraints** | Needs a **PK or unique index**; table name < 30 chars; ≤ 1000 tables | None — loads any table; keys are config, not a requirement |
@@ -142,8 +142,14 @@ connector → bronze → silver → gold.
 - **Raw, everything-lands** — no row/column subsetting or masking at ingest; **all data, including
   sensitive member/employer columns, is replicated into OneLake**. Governance must be enforced
   entirely downstream, and the raw copy still exists.
-- **Coverage gaps** — no LOB/XML/complex types, no type-change DDL, tables must have a PK/unique
-  index, ≤ 1000 tables, name-length limits. Any table that misses these simply won't mirror.
+- **Coverage gaps** — supported types are a fixed allow-list (no LOB/XML/complex types; even plain
+  `TIMESTAMP` variants are restricted), no type-change DDL, tables must have a PK/unique index,
+  ≤ 1000 tables, table names < 30 chars. Any table that misses these simply won't mirror.
+- **Broad, instance-wide grants** — the sync user needs `SELECT ANY TABLE` **and**
+  `SELECT ANY DICTIONARY` (read *everything* in the instance), not just the tables you mirror — a
+  real least-privilege concern in a pension estate.
+- **Read-write source only** — LogMiner can't run against a read-only **physical standby / DR
+  replica**, so capture can't be offloaded off the primary.
 - You still build **silver/gold** — mirroring is not a substitute for the modelling layer.
 - **New dedicated gateway** — mirroring uses the on-premises data gateway only; our existing **VNet
   gateway can't be reused**, so it's fresh infra to stand up, patch, and HA-cluster for 24/7 CDC.
@@ -154,7 +160,10 @@ connector → bronze → silver → gold.
 - **Governance-first** — subset (`filters`/`select`), **mask or drop sensitive columns before they
   land**, DQ + quarantine, schema-drift detection, and code-driven security (CLS/RLS/DDM). For a
   pension org handling PII, keeping sensitive data out of raw OneLake is a material advantage.
-- **No source changes** — only a `SELECT` account; nothing to enable on the Oracle side.
+- **No source changes, least privilege** — only `SELECT` on the specific tables (not the
+  instance-wide `SELECT ANY TABLE` / `SELECT ANY DICTIONARY` mirroring requires), and nothing to
+  enable on the Oracle side. It can even read a **read-only standby / DR replica**, keeping load off
+  the primary — mirroring can't (LogMiner needs a read-write source).
 - **Reuses existing connectivity** — the on-prem Copy can run through our current **VNet gateway**
   (no new dedicated gateway to provision/HA), and only during scheduled loads, not 24/7.
 - **Universal** — the same registry ingests Oracle, SQL Server, APIs, files (dropbox), and
