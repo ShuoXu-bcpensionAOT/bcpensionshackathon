@@ -238,13 +238,13 @@ erDiagram
 | `source_id` | INT FK→datasource | |
 | `source_schema`, `source_table` | str | source location (schema optional; defaults to `dbo` in the landed name) |
 | `target_name` | str | explicit bronze/silver Delta table name. **Optional** — if null, the name is derived (see naming convention below) |
-| `load_type` | str | **`full`** = overwrite each run · **`incremental`** = append rows past the watermark |
-| `key_columns_json` | str(JSON) | business key(s), source-case JSON array, e.g. `["SalesOrderID","SalesOrderDetailID"]` (used for silver dedupe/upsert; snake_cased internally) |
+| `load_type` | str | **`full`** (default from discovery) = re-extract the whole table each run · **`incremental`** = extract only rows past the watermark. **Bronze always appends** either way (see below) |
+| `key_columns_json` | str(JSON) | business key(s), source-case JSON array, e.g. `["SalesOrderID","SalesOrderDetailID"]` (used for silver dedupe/upsert; snake_cased internally). A key on a **full** load auto-enables delete-detection (below) |
 | `watermark_column` | str | column used for incremental (e.g. `ModifiedDate`) |
 | `watermark_type` | str | **`datetime`** |
 | `processing_state` | str | **`ACTIVE`** (only ACTIVE objects run) |
 | `is_active` | BIT | |
-| `source_options_json` | str(JSON) | per-object connector options: `query`, `filters`, `select` (schema selection); HTTP `url`/`params`/`response`/`method`/`body` (see §4.9) |
+| `source_options_json` | str(JSON) | per-object connector options: `query`, `filters`, `select` (schema selection); HTTP `url`/`params`/`response`/`method`/`body` (see §4.9). `delete_detection`: `"off"` to disable delete-flagging on a keyed full load (default: on) |
 | `suffix` | str | optional tag appended to the derived table name (e.g. `bc`) |
 
 **Landed-table naming (schema-enabled lakehouses).** The medallion lakehouses are **schema-enabled**
@@ -257,9 +257,22 @@ path; `landed_table(o)` returns `(schema, table)`. Schema-enabled lakehouses are
 substrate for OneLake row/column security (§4.10).
 
 **Incremental semantics:** first run (no stored watermark) pulls everything and records
-`max(watermark_column)`; later runs pull `WHERE watermark_column > stored` and append.
-Full loads overwrite. Complex source types (xml/geography/geometry/hierarchyid/varbinary/
-image/sql_variant) are excluded automatically.
+`max(watermark_column)`; later runs pull `WHERE watermark_column > stored`. Complex source types
+(xml/geography/geometry/hierarchyid/varbinary/image/sql_variant) are excluded automatically.
+
+**Bronze is append-only.** Every load — a full snapshot or an incremental delta — is *appended* to
+bronze and tagged (`_run_id`, `_bronze_ingest_ts`); bronze is the raw audit log and is never
+overwritten. **Silver** reduces it to current state: with a business key it keeps the latest value
+per key (upsert); keyless, it mirrors the **latest snapshot** only (older snapshots remain as bronze
+history).
+
+**Delete-detection (soft delete).** On a **keyed full load** (each run is a complete snapshot), a
+key present in an earlier snapshot but **absent from the newest** one has been deleted at source:
+silver keeps the row with its last-known values and sets **`_is_deleted` / `_deleted_at`** (a key
+that reappears later flips back). This is **on by default** for keyed full/snapshot loads — set
+`source_options_json.delete_detection = "off"` to disable. It does **not** apply to `incremental`
+loads (a watermark delta can't reveal a physical delete) — keep a table on `full` if you need its
+deletes audited. `gold` SCD2 carries the flag downstream.
 
 ### 4.3 `dq_rule` — data-quality rules (evaluated on silver)
 Rules are evaluated per object during `silver_worker`. **`column_name` is the SILVER column

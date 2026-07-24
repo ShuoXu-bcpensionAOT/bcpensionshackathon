@@ -32,7 +32,10 @@ def bronze(run_id="manual", object_json="{}", object=None, src_user="", src_pass
                 .withColumn("_source_table", F.lit(label))
                 .withColumn("_bronze_ingest_ts", F.current_timestamp()))
         cnt = df.count()
-        mode = "append" if load_type in ("incremental", "append") else "overwrite"
+        # Bronze is an APPEND-ONLY audit log: every load (full snapshot or incremental delta) is
+        # retained and tagged (_run_id, _bronze_ingest_ts). Silver reduces it to current state /
+        # flags deletes; bronze keeps the history. (Delta + OneLake — storage is cheap; audit isn't.)
+        mode = "append"
         write_path(df, tpath("bronze", table, schema), mode=mode)
         if wm_col and wm_col in df.columns and cnt:
             update_watermark(oid, df.agg(F.max(F.col(wm_col))).collect()[0][0])

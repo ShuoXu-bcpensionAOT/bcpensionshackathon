@@ -22,6 +22,9 @@ def merge_upsert(target_path, source_df, keys):
     if not delta_exists(target_path):
         write_path(source_df, target_path, mode="overwrite")
         return
+    # Schema evolution: let updateAll/insertAll add new columns to an existing target — e.g. when
+    # delete-detection is switched on and silver gains _is_deleted / _deleted_at.
+    spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
     tgt = DeltaTable.forPath(spark, target_path)
     cond = " AND ".join([f"t.`{k}` = s.`{k}`" for k in keys])
     (tgt.alias("t").merge(source_df.alias("s"), cond)

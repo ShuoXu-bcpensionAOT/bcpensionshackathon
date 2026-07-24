@@ -80,7 +80,7 @@ connector → bronze → silver → gold.
 |---|---|---|
 | **Row inserted** | Appears in the mirror in ~seconds (CDC) | Picked up on the next run (watermark: when its change-date advances; else next full load); silver keys it, gold adds it |
 | **Row updated** | Mirror row updated in place — shows the **new** value; the old value is **gone** (mirror = current state) | Incremental appends the new version to bronze (a raw change log); silver keeps latest by key; **gold SCD2 preserves old *and* new** — you keep history |
-| **Row deleted** | CDC **silently removes** the row — the mirror matches the source, but the deleted record is **gone** from the current table (recoverable only via Delta time-travel: retention-limited, replication-versioned — awkward for audit) | **Better for audit, and implemented:** an **append-snapshot** bronze keeps the record visible in prior batches ("present in batch N, gone in N+1" is a plain query); silver's `delete_detection="soft"` reconciliation stamps `_is_deleted` / `_deleted_at` (latest values retained; a reappearing key flips back). Caveat: it's opt-in per object — the *default* watermark/overwrite load won't flag deletes |
+| **Row deleted** | CDC **silently removes** the row — the mirror matches the source, but the deleted record is **gone** from the current table (recoverable only via Delta time-travel: retention-limited, replication-versioned — awkward for audit) | **Better for audit, and on by default:** bronze is **append-only** (every snapshot kept — "present in batch N, gone in N+1" is a plain query); on a **keyed full load** silver auto-stamps `_is_deleted` / `_deleted_at` (latest values retained; a reappearing key flips back). Only exclusion: `incremental` loads (a delta can't reveal a delete) — keep such a table on `full` |
 | **Column added** | Applied (supported DDL) | Full load picks it up; silver **logs a `COLUMN_ADDED` drift event**; flows unless `select` excludes it |
 | **Column dropped** | Applied (supported DDL) | Absent next load; silver **logs `COLUMN_REMOVED`** (warning) |
 | **Column renamed** | Applied (supported DDL) | Shows as drop+add (drift logged); a `select` rename normalizes it |
@@ -107,11 +107,12 @@ connector → bronze → silver → gold.
   pension corporation that must audit removals, that's arguably **better** than a mirror that just
   makes the row vanish. The honest caveat: this is a **deliberate pattern** — the default
   watermark/overwrite load won't flag deletes on its own — and full snapshots cost storage, so
-  choose it per table. This is **implemented**: silver's `delete_detection="soft"` (ported from the
-  MXData accelerator's `_is_deleted` handling) does the reconciliation, surfaced through the dropbox
-  via a `<name>__key=<col>.<ext>` filename (see `DESIGN.md` §8). Verified end-to-end: a 10-row
-  snapshot, then a re-drop with one row removed + two updated, yields 10 silver rows — the removed
-  key flagged `_is_deleted` with its last-known values, the rest carrying the latest updates.
+  choose it per table. This is **implemented and on by default**: bronze is append-only, and any
+  **keyed full load** auto-runs the reconciliation (ported from the MXData accelerator's
+  `_is_deleted` handling) — set `delete_detection="off"` to disable, and note it can't apply to
+  `incremental` loads. Verified end-to-end: a 10-row snapshot, then a reload with one row removed +
+  two updated, yields 10 silver rows — the removed key flagged `_is_deleted` with its last-known
+  values, the rest carrying the latest updates; bronze retains both snapshots (19 rows).
 
 ---
 

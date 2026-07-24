@@ -39,18 +39,22 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
     def _work():
         oid = o["object_id"]
         schema, table = landed_table(o)                        # schema-enabled: (schema, table)
-        keys = [snake(k) for k in json.loads(o["key_columns_json"])]
+        keys = [snake(k) for k in json.loads(o.get("key_columns_json") or "[]")]
         try:
             opts = json.loads(o.get("source_options_json") or "{}") or {}
         except (ValueError, TypeError):
             opts = {}
-        # Soft-delete detection: when the source is loaded as full snapshots appended to bronze
-        # (e.g. the dropbox, or a snapshot-append source), a business key present in an EARLIER
-        # snapshot but absent from the LATEST one has been deleted at source. We keep the row (last
-        # known values) and flag it (_is_deleted / _deleted_at) rather than dropping it — auditable
-        # deletes. Needs a real business key (not the row-hash keyless dedup).
-        soft_delete = str(opts.get("delete_detection", "")).lower() == "soft" and keys \
-            and keys != ["_row_hash"]
+        load_type = str(o.get("load_type", "full")).lower()
+        has_key = bool(keys) and keys != ["_row_hash"]
+        # Snapshot loads (full, or file/append where each batch is a COMPLETE image of the source)
+        # let us reason about deletes; an incremental (watermark) delta only carries changed rows and
+        # can't reveal a row removed at source, so delete-detection never applies there.
+        is_snapshot = load_type != "incremental"
+        dd = str(opts.get("delete_detection", "")).lower()
+        # Auto-on: a KEYED SNAPSHOT load flags business keys that vanish between snapshots as
+        # soft-deletes (kept with _is_deleted / _deleted_at, latest values retained; a reappearing
+        # key flips back). Opt out per object with source_options_json.delete_detection = "off".
+        soft_delete = has_key and is_snapshot and dd != "off"
         bp = tpath("bronze", table, schema)
         if not delta_exists(bp):
             print(f"skip {schema}.{table}: no bronze")
@@ -61,15 +65,21 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
         sdf = df.select([F.col(c).alias(snake(c)) for c in biz] + [ingest_ts.alias("_bronze_ingest_ts")])
         if "rowguid" in sdf.columns:
             sdf = sdf.drop("rowguid")
-        # Keys present in the latest snapshot (the max ingest batch) — everything else is a delete.
+        # bronze is append-only (every load retained for audit) — isolate the LATEST snapshot.
+        latest_ts = sdf.agg(F.max("_bronze_ingest_ts")).first()[0] if is_snapshot else None
         current_keys_df, max_ts = None, None
         if soft_delete and all(k in sdf.columns for k in keys):
-            max_ts = sdf.agg(F.max("_bronze_ingest_ts")).first()[0]
+            max_ts = latest_ts                                 # keys in the newest snapshot = alive
             current_keys_df = sdf.where(F.col("_bronze_ingest_ts") == F.lit(max_ts)) \
                                  .select(*keys).distinct()
-        if all(k in sdf.columns for k in keys):
+        if has_key and all(k in sdf.columns for k in keys):
+            # keyed: keep the latest value per key across ALL retained snapshots.
             w = Window.partitionBy(*keys).orderBy(F.col("_bronze_ingest_ts").desc())
             sdf = sdf.withColumn("_rn", F.row_number().over(w)).where(F.col("_rn") == 1).drop("_rn")
+        elif is_snapshot and latest_ts is not None:
+            # keyless snapshot: silver mirrors the LATEST snapshot only (row-hash de-duped below);
+            # earlier appended snapshots are audit history in bronze, not current state.
+            sdf = sdf.where(F.col("_bronze_ingest_ts") == F.lit(latest_ts))
         sdf = sdf.drop("_bronze_ingest_ts")
 
         # cleanse (fix rows) BEFORE DQ validation (quarantine)
@@ -108,12 +118,14 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
                        .drop("_present")
             del_cnt = good.where(F.col("_is_deleted")).count()
         sp = tpath("silver", table, schema)
-        if all(k in good.columns for k in keys):
-            # dedup on the key set before merge so a merge never sees duplicate source keys — this
-            # is also how keyless sources dedup on the full row (key_columns_json = ["_row_hash"]).
+        if has_key and all(k in good.columns for k in keys):
+            # keyed: upsert the latest-per-key set (+ soft-delete flags). Dedup on the key first so
+            # the merge never sees duplicate source keys.
             merge_upsert(sp, good.dropDuplicates(keys), keys)
         else:
-            write_path(good, sp, mode="overwrite")
+            # keyless: silver = the latest snapshot, row-hash de-duplicated (latest drop/load wins).
+            dedup_key = keys if (keys and all(k in good.columns for k in keys)) else ["_row_hash"]
+            write_path(good.dropDuplicates(dedup_key), sp, mode="overwrite")
         s_cnt = read_path(sp).count()
         log_object_run(run_id, oid, "silver", "SUCCEEDED", source_count=sdf.count(),
                        target_count=s_cnt, quarantine_count=q_cnt)

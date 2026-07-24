@@ -241,10 +241,10 @@ passing the file's path as the CloudEvent `Subject`. `cp_pl_dropbox` → the thi
 3. **Register** (idempotent) a `file` datasource for the schema + one `source_object` per file, and
    **per Excel sheet** (`.xlsx`/`.xls` → `<file>_<tab>`; csv/txt → one table). Landing name is clean
    (`<schema>.<file[_tab]>`, no `dbo_` prefix) via a `landed` override in `source_options_json`.
-4. **Bronze APPEND** (raw history of every drop) → **silver dedup on the full row hash**
-   (`key_columns_json = ["_row_hash"]`), so re-dropping identical content is idempotent and an
-   updated file contributes only its new/changed rows. Files are read **as strings** so the row
-   hash is stable across drops.
+4. **Bronze APPEND** (raw history of every drop) → **silver = the latest drop**, row-hash
+   de-duplicated (keyless default), so re-dropping identical content is idempotent and a re-dropped
+   *updated* file replaces silver with its latest snapshot (older drops stay as bronze history).
+   Files are read **as strings** so the row hash is stable across drops.
 5. **Archive** the file to `archive/YYYY/MM/DD/` and write the ledger row.
 
 **Idempotency & concurrency** — three layers make it safe under the per-file event model (a batch
@@ -257,15 +257,14 @@ no `file_path`, `workers.dropbox` **scans** all of `newfile/` — the manual/sch
 > coalesce them). For a single run that batches everything, schedule the scan instead.
 
 **Snapshot / soft-delete mode.** Name a file `<name>__key=<col>[,<col>].<ext>` and each drop is
-treated as a **full snapshot** keyed on `<col>` instead of the keyless row-hash dedup. The dropbox
-registers the object with that business key + `source_options_json.delete_detection = "soft"`;
-silver then (a) dedups on the key keeping the **latest** values, and (b) reconciles against the
-latest snapshot — a key present in an earlier drop but **absent from the newest** one is retained
-with `_is_deleted = true` / `_deleted_at` set (a key that reappears later flips back). Re-drop the
-**same filename** to feed the next snapshot. This is the general `delete_detection` capability
-(silver worker) surfaced through the dropbox; any snapshot-append source can set the same option.
-Bronze keeps every snapshot, so "present in batch *N*, gone in *N+1*" stays a plain query — deletes
-are **auditable**, not silent (see `docs/BRONZE_VS_MIRRORING.md` §3).
+treated as a **keyed snapshot** on `<col>` instead of the keyless row-hash dedup: silver dedups on
+the key keeping the **latest** values, and a key present in an earlier drop but **absent from the
+newest** one is retained with `_is_deleted = true` / `_deleted_at` (a key that reappears later flips
+back). Re-drop the **same filename** to feed the next snapshot. This just surfaces the general
+delete-detection capability — which is **on by default for any keyed full/snapshot load** (see §4 /
+`WORKING_GUIDE.md` §4.2), not dropbox-specific. Bronze keeps every snapshot, so "present in batch
+*N*, gone in *N+1*" stays a plain query — deletes are **auditable**, not silent
+(see `docs/BRONZE_VS_MIRRORING.md` §3).
 
 ---
 
