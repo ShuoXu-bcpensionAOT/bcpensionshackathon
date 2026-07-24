@@ -14,6 +14,7 @@ Pipelines over param-driven Spark notebooks.
 | **[`control_plane/docs/RUNBOOK_statcan.md`](control_plane/docs/RUNBOOK_statcan.md)** | Worked example: land a Statistics Canada API subset end-to-end. |
 | **[`control_plane/docs/GOVERNANCE_SECURITY.md`](control_plane/docs/GOVERNANCE_SECURITY.md)** | Governance & security: what we've implemented, the full Lakehouse surface, and what a Warehouse adds. |
 | **[`control_plane/docs/DESIGN.md`](control_plane/docs/DESIGN.md)** | Engine internals: the modular `src/cp/` package, how to add a connector, the bundler, the wheel. |
+| **[`control_plane/docs/BRONZE_VS_MIRRORING.md`](control_plane/docs/BRONZE_VS_MIRRORING.md)** | Our bronze ingestion vs Fabric Mirroring (e.g. on-prem Oracle): pros/cons + recommendation. |
 | **[`control_plane/docs/CICD.md`](control_plane/docs/CICD.md)** | CI/CD (GitHub Actions + Azure DevOps), service-principal auth, Key Vault. |
 | **[`control_plane/SOLUTION.md`](control_plane/SOLUTION.md)** | Packaged-solution summary + roadmap. |
 

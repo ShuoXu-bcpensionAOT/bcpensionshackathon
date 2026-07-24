@@ -124,6 +124,8 @@ Worked end-to-end example (a Statistics Canada API subset): **`docs/RUNBOOK_stat
 Full reference (every config table, connector, and the data-security model): **`docs/WORKING_GUIDE.md`**.
 Engine internals (the `src/cp/` package, how to add a connector, the bundler, the wheel):
 **`docs/DESIGN.md`**.
+Framework vs Fabric **Mirroring** for a source like on-prem Oracle (pros/cons + recommendation):
+**`docs/BRONZE_VS_MIRRORING.md`**.
 
 ---
 
