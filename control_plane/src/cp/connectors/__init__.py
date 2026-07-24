@@ -5,8 +5,9 @@ object_config carries source_object + datasource fields (see workers.plan), plus
 JSON columns connection_json (datasource-level) and source_options_json (per object)."""
 
 INGEST_CONNECTORS = {}
-# connectors that support metadata schema discovery (INFORMATION_SCHEMA over JDBC)
-DISCOVERABLE_CONNECTORS = {"sqlserver", "oracle", "db2", "postgresql", "mysql", "jdbc"}
+# Which connectors auto-discover objects is defined by the discovery registry (src/cp/discovery/:
+# sqlserver, oracle, db2, postgresql, mysql, statcan_wds). A connector without a discoverer still
+# loads — you just author its source_object rows by hand instead of auto-enumerating.
 
 
 def ingest_connector(*names):

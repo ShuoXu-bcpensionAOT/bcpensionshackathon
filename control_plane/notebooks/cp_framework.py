@@ -539,8 +539,9 @@ object_config carries source_object + datasource fields (see workers.plan), plus
 JSON columns connection_json (datasource-level) and source_options_json (per object)."""
 
 INGEST_CONNECTORS = {}
-# connectors that support metadata schema discovery (INFORMATION_SCHEMA over JDBC)
-DISCOVERABLE_CONNECTORS = {"sqlserver", "oracle", "db2", "postgresql", "mysql", "jdbc"}
+# Which connectors auto-discover objects is defined by the discovery registry (src/cp/discovery/:
+# sqlserver, oracle, db2, postgresql, mysql, statcan_wds). A connector without a discoverer still
+# loads — you just author its source_object rows by hand instead of auto-enumerating.
 
 
 def ingest_connector(*names):
@@ -630,6 +631,37 @@ def jdbc_read(server, database, user, password, dbtable=None, query=None, tries=
     d = JDBC_DIALECTS["sqlserver"]
     url = d["url"].format(host=server, port=d["port"], database=database)
     return _jdbc_load(url, d["driver"], user, password, dbtable, query, tries)
+
+
+def run_catalog_query(o, sql, user="", password=""):
+    """Run a read-only catalog/metadata query against a source database using the SAME connection
+    path its ingest connector uses — pure-Python DB-API for oracle/db2 (thin, pip-installed on
+    demand), JDBC otherwise (and for oracle/db2 with connection_json.mode='jdbc'). Returns a Spark
+    DataFrame. Discoverers use this to read INFORMATION_SCHEMA / ALL_* / SYSCAT without duplicating
+    connection logic. (Alias resolution mirrors resolve_connector; inlined to avoid an import cycle.)"""
+    name = (o.get("connector") or o.get("source_type") or "sqlserver").lower()
+    name = {"sql": "sqlserver", "mssql": "sqlserver", "custom_jdbc": "sqlserver"}.get(name, name)
+    c = _resolve_conn(o)
+    u, p = c.get("user") or user, c.get("password") or password
+    db = c.get("database") or o.get("database_name")
+    jdbc_mode = (c.get("mode") or "").lower() == "jdbc"
+    if name == "oracle" and not jdbc_mode:
+        oracledb = _ensure_pkg("oracledb")
+        dsn = c.get("dsn") or (f"{c.get('host')}:{c.get('port', 1521)}/"
+                               f"{c.get('service') or c.get('database') or db}")
+        return _dbapi_to_spark(oracledb.connect(user=u, password=p, dsn=dsn), sql)
+    if name == "db2" and not jdbc_mode:
+        dbi = _ensure_pkg("ibm_db_dbi", "ibm_db")
+        cs = (f"DATABASE={db};HOSTNAME={c.get('host')};PORT={c.get('port', 50000)};"
+              f"PROTOCOL=TCPIP;UID={u};PWD={p};")
+        return _dbapi_to_spark(dbi.connect(cs, "", ""), sql)
+    d = JDBC_DIALECTS.get(name)
+    url = c.get("url") or c.get("connection_string") or (
+        d["url"].format(host=c.get("host") or SOURCE_SERVER, port=c.get("port") or d["port"],
+                        database=db) if d else None)
+    if not url:
+        raise Exception(f"run_catalog_query: no JDBC url/dialect for connector '{name}'")
+    return _jdbc_load(url, _jdbc_driver(c, d), u, p, query=sql)
 
 
 def _opts(o):
@@ -1084,8 +1116,27 @@ def _ic_staged(o, user, password):
 list of candidate object dicts (source_schema, source_table, key_columns_json,
 source_options_json; any may be None). The metadata step materializes these as source_object
 rows with is_active=0."""
+import json
+
 
 DISCOVERERS = {}
+
+
+def _candidates(tables, pk):
+    """Shared shaping for JDBC/DB-API catalog discoverers: build candidate objects from a `tables`
+    result (columns aliased t_s, t_n) and a `pk` result (t_s, t_n, c_n, ord). Column casing varies
+    by dialect/driver (Oracle/DB2 upper-case, Postgres lower-case), so read case-insensitively."""
+    def ci(r):
+        return {k.upper(): v for k, v in r.asDict().items()}
+    keys = {}
+    for r in sorted((ci(x) for x in pk), key=lambda x: int(x["ORD"] or 0)):
+        keys.setdefault((r["T_S"], r["T_N"]), []).append(r["C_N"])
+    out = []
+    for x in (ci(t) for t in tables):
+        out.append({"source_schema": x["T_S"], "source_table": x["T_N"],
+                    "key_columns_json": json.dumps(keys.get((x["T_S"], x["T_N"]), [])),
+                    "source_options_json": None})
+    return out
 
 
 def discoverer(*names):
@@ -1106,6 +1157,68 @@ def discover_objects(ds):
     """Return candidate objects for a datasource via its registered discoverer (or None)."""
     fn = DISCOVERERS.get(resolve_connector(ds))
     return fn(ds) if fn else None
+
+"""IBM DB2 object discovery — SYSCAT catalog (base tables + primary keys). DB2 exposes SYSCAT
+reliably across LUW versions (INFORMATION_SCHEMA is not guaranteed), so use it directly."""
+
+
+@discoverer("db2")
+def _discover_db2(ds):
+    tables = run_catalog_query(ds,
+        "SELECT RTRIM(TABSCHEMA) AS t_s, RTRIM(TABNAME) AS t_n FROM SYSCAT.TABLES "
+        "WHERE TYPE='T' AND TABSCHEMA NOT LIKE 'SYS%'").collect()
+    pk = run_catalog_query(ds,
+        "SELECT RTRIM(K.TABSCHEMA) AS t_s, RTRIM(K.TABNAME) AS t_n, RTRIM(K.COLNAME) AS c_n, "
+        "K.COLSEQ AS ord "
+        "FROM SYSCAT.KEYCOLUSE K JOIN SYSCAT.TABCONST C "
+        "ON K.CONSTNAME=C.CONSTNAME AND K.TABSCHEMA=C.TABSCHEMA AND K.TABNAME=C.TABNAME "
+        "WHERE C.TYPE='P'").collect()
+    return _candidates(tables, pk)
+
+"""ANSI INFORMATION_SCHEMA object discovery — PostgreSQL & MySQL (base tables + primary keys).
+Both expose the ANSI INFORMATION_SCHEMA views, so one discoverer serves both. (SQL Server has its
+own module for its dialect quirks; Oracle/DB2 use their native catalogs.)"""
+
+# system schemas to exclude (Postgres + MySQL). NB: on a multi-database MySQL server
+# INFORMATION_SCHEMA spans every database — scope with a source-side filter if that over-enumerates.
+_ANSI_SYS_SCHEMAS = ("pg_catalog", "information_schema", "mysql", "sys", "performance_schema")
+
+
+@discoverer("postgresql", "mysql")
+def _discover_ansi(ds):
+    excl = ", ".join(f"'{s}'" for s in _ANSI_SYS_SCHEMAS)
+    tables = run_catalog_query(ds,
+        "SELECT TABLE_SCHEMA AS t_s, TABLE_NAME AS t_n FROM INFORMATION_SCHEMA.TABLES "
+        f"WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA NOT IN ({excl})").collect()
+    pk = run_catalog_query(ds,
+        "SELECT KU.TABLE_SCHEMA AS t_s, KU.TABLE_NAME AS t_n, KU.COLUMN_NAME AS c_n, "
+        "KU.ORDINAL_POSITION AS ord "
+        "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS TC "
+        "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU "
+        "ON TC.CONSTRAINT_NAME=KU.CONSTRAINT_NAME AND TC.CONSTRAINT_SCHEMA=KU.CONSTRAINT_SCHEMA "
+        "WHERE TC.CONSTRAINT_TYPE='PRIMARY KEY'").collect()
+    return _candidates(tables, pk)
+
+"""Oracle object discovery — ALL_TABLES / ALL_CONSTRAINTS+ALL_CONS_COLUMNS (base tables + primary
+keys). Oracle has no INFORMATION_SCHEMA; the ALL_* views show every table the read account can see.
+Oracle-maintained schemas are excluded so discovery returns only application objects."""
+
+_ORA_SYS_OWNERS = ("SYS", "SYSTEM", "XDB", "MDSYS", "CTXSYS", "OUTLN", "DBSNMP", "APPQOSSYS",
+                   "ORDSYS", "ORDDATA", "WMSYS", "LBACSYS", "OLAPSYS", "GSMADMIN_INTERNAL",
+                   "AUDSYS", "DVSYS", "ORACLE_OCM", "XS$NULL", "SYSBACKUP", "SYSKM", "SYSRAC")
+
+
+@discoverer("oracle")
+def _discover_oracle(ds):
+    excl = ", ".join(f"'{o}'" for o in _ORA_SYS_OWNERS)
+    tables = run_catalog_query(ds,
+        f"SELECT OWNER AS t_s, TABLE_NAME AS t_n FROM ALL_TABLES WHERE OWNER NOT IN ({excl})").collect()
+    pk = run_catalog_query(ds,
+        "SELECT C.OWNER AS t_s, C.TABLE_NAME AS t_n, CC.COLUMN_NAME AS c_n, CC.POSITION AS ord "
+        "FROM ALL_CONSTRAINTS C JOIN ALL_CONS_COLUMNS CC "
+        "ON C.OWNER=CC.OWNER AND C.CONSTRAINT_NAME=CC.CONSTRAINT_NAME "
+        "WHERE C.CONSTRAINT_TYPE='P'").collect()
+    return _candidates(tables, pk)
 
 """SQL Server object discovery — enumerate base tables + primary-key columns."""
 import json

@@ -17,7 +17,7 @@ is hand-wired: sources, objects, rules, models, and security policies are all ro
 | **Pluggable source connectors** | One registry — SQL Server / PostgreSQL / MySQL (bundled JDBC), Oracle / DB2 (self-installing pure-Python), ODBC, one **generalized HTTP/API** connector (JSON / CSV / zip-CSV), **Microsoft Entra ID** (Graph, `entra`), and **ad-hoc files** (`file`/dropbox — csv/txt/xlsx). Firewalled **on-prem** sources load via `cp_pl_onprem` (Copy through the on-premises data gateway → staging → bronze). Add a source = config, no code. Add a *new connector type* = drop one file in `src/cp/connectors/` (auto-registered — no framework edit); see [`docs/DESIGN.md`](docs/DESIGN.md). |
 | **Event-driven file dropbox** | Users drop csv/txt/xlsx files into `LH_Filedrop/Files/newfile/<schema>/`; a **OneLake event trigger** loads each (one table per file, per Excel tab) — bronze append → silver full-row-hash dedup → archive by date. Idempotent (hash ledger + row-hash). Name a file `<name>__key=<col>.csv` for **snapshot / soft-delete** mode (key on `<col>`, keep latest, flag removed rows `_is_deleted`). See [`docs/DESIGN.md`](docs/DESIGN.md) §8. |
 | **Connections in Key Vault** | `datasource.secret_name` → a KV secret holding the full connection (DB creds or HTTP base-url/auth). Only the *name* is in git; hosts/creds never sit in config or the variable library. The `cp_connection_builder` wizard writes the secret **and** registers the `datasource` row in one step. |
-| **Auto-discovery** | The metadata step enumerates a datasource (all SQL Server tables + PK keys, or declared API resources) and **registers `source_object` rows as `is_active=0`** — you never hand-author objects; you review, tweak, activate. |
+| **Auto-discovery** | The metadata step enumerates a datasource — every base table + PK for **SQL Server, PostgreSQL, MySQL, DB2, Oracle** (their native catalogs), or declared API resources — and **registers `source_object` rows as `is_active=0`**; you review, tweak, activate. A connector without a discoverer still loads (author objects by hand). |
 | **Subset & schema selection** | Per-object `filters` (land only the rows you want) and `select` (control which columns land, order, names, casts). |
 | **Data quality & cleansing** | `cleanse_rule` fixes rows (trim/normalize/mask/…); `dq_rule` validates (not_null/min/max/allowed/expr) — error-severity failures are **quarantined** off silver. |
 | **Schema-enabled medallion** | Bronze/silver land at `Tables/<datasource>/<sourceschema>_<table>` (e.g. `stats_can.dbo_labour_force_bc`); gold star schema (SCD1/SCD2/fact) built in DAG order by `sq_*` source-query notebooks. |
@@ -40,7 +40,7 @@ control_plane/
 ├── src/cp/                    THE ENGINE (modular package — source of truth; see docs/DESIGN.md)
 │   ├── runtime/naming/dag/storage/secrets/config_db/transform/audit/gold   core modules
 │   ├── connectors/            one file per source (jdbc, odbc, http, oracle, db2, staged) — auto-registered
-│   ├── discovery/             one file per discoverer (sqlserver, statcan) — auto-registered
+│   ├── discovery/             one file per discoverer (sqlserver, postgres/mysql, db2, oracle, statcan) — auto-registered
 │   ├── cleanse/               cleanse-function library — auto-registered
 │   └── workers/               plan/bronze/silver/metadata/gold entrypoints (the notebooks call these)
 ├── notebooks/                 Fabric notebooks (deployed to the workspace)

@@ -60,6 +60,37 @@ def jdbc_read(server, database, user, password, dbtable=None, query=None, tries=
     return _jdbc_load(url, d["driver"], user, password, dbtable, query, tries)
 
 
+def run_catalog_query(o, sql, user="", password=""):
+    """Run a read-only catalog/metadata query against a source database using the SAME connection
+    path its ingest connector uses — pure-Python DB-API for oracle/db2 (thin, pip-installed on
+    demand), JDBC otherwise (and for oracle/db2 with connection_json.mode='jdbc'). Returns a Spark
+    DataFrame. Discoverers use this to read INFORMATION_SCHEMA / ALL_* / SYSCAT without duplicating
+    connection logic. (Alias resolution mirrors resolve_connector; inlined to avoid an import cycle.)"""
+    name = (o.get("connector") or o.get("source_type") or "sqlserver").lower()
+    name = {"sql": "sqlserver", "mssql": "sqlserver", "custom_jdbc": "sqlserver"}.get(name, name)
+    c = _resolve_conn(o)
+    u, p = c.get("user") or user, c.get("password") or password
+    db = c.get("database") or o.get("database_name")
+    jdbc_mode = (c.get("mode") or "").lower() == "jdbc"
+    if name == "oracle" and not jdbc_mode:
+        oracledb = _ensure_pkg("oracledb")
+        dsn = c.get("dsn") or (f"{c.get('host')}:{c.get('port', 1521)}/"
+                               f"{c.get('service') or c.get('database') or db}")
+        return _dbapi_to_spark(oracledb.connect(user=u, password=p, dsn=dsn), sql)
+    if name == "db2" and not jdbc_mode:
+        dbi = _ensure_pkg("ibm_db_dbi", "ibm_db")
+        cs = (f"DATABASE={db};HOSTNAME={c.get('host')};PORT={c.get('port', 50000)};"
+              f"PROTOCOL=TCPIP;UID={u};PWD={p};")
+        return _dbapi_to_spark(dbi.connect(cs, "", ""), sql)
+    d = JDBC_DIALECTS.get(name)
+    url = c.get("url") or c.get("connection_string") or (
+        d["url"].format(host=c.get("host") or SOURCE_SERVER, port=c.get("port") or d["port"],
+                        database=db) if d else None)
+    if not url:
+        raise Exception(f"run_catalog_query: no JDBC url/dialect for connector '{name}'")
+    return _jdbc_load(url, _jdbc_driver(c, d), u, p, query=sql)
+
+
 def _opts(o):
     return json.loads(o["source_options_json"]) if o.get("source_options_json") else {}
 

@@ -472,10 +472,18 @@ deploy unbound and Oracle/DB2 use the self-install path.
 
 **Objects are discovered, not hand-authored.** The **metadata step** enumerates a datasource and
 **registers `source_object` rows as `is_active=0`** (never clobbering existing tweaks); you then set
-filters/select and activate. SQL Server: every base table (+ keys from the PK). HTTP: one object per
-`table_id`/resource declared in the datasource. So the flow is: register the *datasource* → run
-`cp_pl_metadata` → tweak + activate the object → run `cp_pl_bronze/silver`. `source_id` is
-`IDENTITY` (auto); use `SCOPE_IDENTITY()` if you ever insert a datasource by hand.
+filters/select and activate. Per connector — every base table + its primary key:
+**SQL Server** (`INFORMATION_SCHEMA`), **PostgreSQL / MySQL** (`INFORMATION_SCHEMA`), **DB2**
+(`SYSCAT`), **Oracle** (`ALL_TABLES`/`ALL_CONS_COLUMNS`); **HTTP**: one object per
+`table_id`/resource declared in the datasource. Each discoverer is one file in `src/cp/discovery/`,
+auto-registered by connector name — a connector *without* one still loads, you just author its
+`source_object` rows by hand. So the flow is: register the *datasource* → run `cp_pl_metadata` →
+tweak + activate the object → run `cp_pl_bronze/silver`. `source_id` is `IDENTITY` (auto); use
+`SCOPE_IDENTITY()` if you ever insert a datasource by hand.
+
+> Object discovery (enumerate tables + PKs) now covers SQL Server, PostgreSQL, MySQL, DB2, and
+> Oracle. The separate per-object **column-drift snapshot** (§ `source_column`) currently runs for
+> SQL Server only; other engines discover + load, but don't yet get the column-drift baseline.
 
 The full worked StatCan example (register datasource → discover → tweak+activate, with the generic
 `http` params) is in **`docs/RUNBOOK_statcan.md`**. Its `filters` land only the **32,724-row** BC

@@ -59,7 +59,7 @@ control_plane/
     connectors/                #   ONE FILE PER SOURCE — auto-registered
       __init__.py  base.py     #     registry + @ingest_connector + resolve/run_connector; shared helpers
       jdbc.py odbc.py http.py oracle.py db2.py staged.py entra.py file.py
-    discovery/                 #   ONE FILE PER DISCOVERER — auto-registered
+    discovery/                 #   ONE FILE PER DISCOVERER (sqlserver, jdbc_ansi=pg/mysql, db2, oracle, statcan) — auto-registered
       __init__.py  sqlserver.py  statcan.py
     cleanse/                   #   cleanse function library — auto-registered
       __init__.py  functions.py
