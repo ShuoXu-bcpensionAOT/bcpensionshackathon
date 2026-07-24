@@ -80,7 +80,7 @@ connector → bronze → silver → gold.
 |---|---|---|
 | **Row inserted** | Appears in the mirror in ~seconds (CDC) | Picked up on the next run (watermark: when its change-date advances; else next full load); silver keys it, gold adds it |
 | **Row updated** | Mirror row updated in place — shows the **new** value; the old value is **gone** (mirror = current state) | Incremental appends the new version to bronze (a raw change log); silver keeps latest by key; **gold SCD2 preserves old *and* new** — you keep history |
-| **Row deleted** | CDC **removes** the row from the mirror — deletions propagate natively | **Weak spot:** a watermark **can't see deletes** (a delete doesn't bump a change-date) and silver's key-merge doesn't remove absent rows. Reflecting deletes needs a full-snapshot overwrite or a key-set **reconciliation** (soft-delete flag) — an enhancement, not out-of-the-box |
+| **Row deleted** | CDC **silently removes** the row — the mirror matches the source, but the deleted record is **gone** from the current table (recoverable only via Delta time-travel: retention-limited, replication-versioned — awkward for audit) | **Better for audit if designed for it:** an **append-snapshot** bronze keeps the record visible in prior batches ("present in batch N, gone in N+1" is a plain query); a key **reconciliation** then stamps a **soft-delete** (`_is_deleted`, `_deleted_at`) through silver + gold. Caveat: the *default* watermark/overwrite load won't flag deletes unless you use this pattern |
 | **Column added** | Applied (supported DDL) | Full load picks it up; silver **logs a `COLUMN_ADDED` drift event**; flows unless `select` excludes it |
 | **Column dropped** | Applied (supported DDL) | Absent next load; silver **logs `COLUMN_REMOVED`** (warning) |
 | **Column renamed** | Applied (supported DDL) | Shows as drop+add (drift logged); a `select` rename normalizes it |
@@ -96,12 +96,19 @@ connector → bronze → silver → gold.
 - **Updates & history — framework wins for auditability.** A mirror always shows *now*: if a
   member's status changes, it overwrites the old value. Only our **SCD2 gold** keeps the
   before-and-after with effective dates — which a pension corporation usually needs for audit.
-- **Deletes — mirroring wins out-of-the-box.** The framework's honest weak spot: a watermark can't
-  detect a physical delete, and silver's merge doesn't remove rows that vanished at source.
-  Mirroring propagates deletes for free. If deletes matter (purged records), the framework needs a
-  periodic **full-snapshot overwrite** or a **key-reconciliation / soft-delete** step (the pattern
-  exists in the MXData accelerator's `_is_deleted` handling — a natural enhancement here). Weigh it
-  per table.
+- **Deletes — a design choice, and for *audit* the framework can be the stronger one.** Mirroring
+  applies deletes automatically, but that cuts both ways: the record **silently disappears** from
+  the current table and is recoverable only via Delta time-travel — limited retention, and those
+  versions are replication commits, not business events, so you can't cleanly answer "what was
+  deleted, and when." Run as **append-snapshot bronze**, our framework keeps every extracted
+  version, so "present in batch N, gone in N+1" is a plain query; a **key reconciliation** (diff the
+  latest snapshot's keys against the model) then stamps a **soft-delete** (`_is_deleted` /
+  `_deleted_at`) through silver and gold, giving downstream logic *explicit* delete awareness. For a
+  pension corporation that must audit removals, that's arguably **better** than a mirror that just
+  makes the row vanish. The honest caveat: this is a **deliberate pattern** — the default
+  watermark/overwrite load won't flag deletes on its own — and full snapshots cost storage, so
+  choose it per table. The MXData accelerator already ships `_is_deleted` handling, so it's a port,
+  not new design.
 
 ---
 
