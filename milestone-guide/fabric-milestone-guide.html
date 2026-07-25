@@ -52,6 +52,11 @@
   .mx td.item{width:26%;font-weight:650;}
   .mx td.fab{width:37%;color:var(--ink);}
   .mx td.ctl{width:37%;}
+  .mx td.k2{width:30%;font-weight:650;}
+  .mx td.env{white-space:normal;}
+  .mono{font-family:'Cascadia Code',Consolas,monospace;font-size:12px;background:var(--panel2);padding:1px 5px;border-radius:5px;}
+  .sec-head h3{color:var(--ink);}
+  section.sec{border-color:color-mix(in srgb,var(--accent) 30%,var(--line));}
   .mx td .chip{margin-bottom:6px;}
   .mx tbody tr:hover{background:var(--panel2);}
   @media(max-width:720px){ .mx td.item{width:auto;} .mx{min-width:640px;} }
@@ -352,6 +357,133 @@
       <tr><td class="item">Validate Semantic Model Integration</td><td class="fab">Confirming Power BI reads the Gold model efficiently (Direct Lake, no copy).</td><td class="ctl"><span class="chip both">Both</span>Gold is Direct-Lake-ready; we validate reports read it live without import refresh.</td></tr>
       <tr><td class="item">Validate Security Integration</td><td class="fab">Confirming access rules (row/column security) carry through to reports.</td><td class="ctl"><span class="chip platform">Platform</span>Row- and column-level security applied at the lakehouse flows through to the model and report — one rule, end-to-end.</td></tr>
       <tr><td class="item">Validate Workspace Strategy</td><td class="fab">Confirming the workspace/app layout works for real authoring and consumption.</td><td class="ctl"><span class="chip standard">Standard</span>Validate the build-vs-consume split with a real report and audience before rolling out broadly.</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <!-- ============ SECURITY DEEP DIVE ============ -->
+  <section class="ms sec">
+    <div class="ms-head sec-head"><h2 class="ms">Deep Dive</h2><h3>Security, Access &amp; Environment Model</h3></div>
+    <p class="ms-goal">BCPC is a government crown corporation — access control, data privacy, and environment isolation are first-order requirements. This is the best-practice design behind the security items above; adopt and refine it with BCPC's security team. The platform already provides the enforcement mechanisms it relies on.</p>
+
+    <div class="note"><b>Guiding principles.</b> &nbsp;Group-based (never individual) &middot; least privilege + just-in-time (PIM) &middot; people and machines never mix &middot; production data stays in production &middot; change PROD only by promotion &middot; everything auditable.</div>
+
+    <h4>Entra ID security model</h4>
+    <p class="cap">Access is assigned to <b>groups</b>; the groups are assigned to workspaces and capacities. Adding or removing a person is a membership change — the permission model never changes.</p>
+    <div class="flow">
+      <div class="fnode">People<small>engineers · stewards · authors · admins</small></div><span class="far">&rarr;</span>
+      <div class="fnode" style="border-top:3px solid var(--accent)">Entra security groups<small>BCPC-FAB-{ENV}-{ROLE}</small></div><span class="far">&rarr;</span>
+      <div class="fnode">Workspace / capacity roles</div>
+    </div>
+    <div class="flow">
+      <div class="fnode">Service principals<small>automation only</small></div><span class="far">&rarr;</span>
+      <div class="fnode" style="border-top:3px solid var(--fabric)">SPN group<small>BCPC-FAB-SPN-{ENV}</small></div><span class="far">&rarr;</span>
+      <div class="fnode">Scoped tenant API access + roles</div>
+    </div>
+    <p class="cap">Gated by <b>Conditional Access</b> (MFA · compliant device · allowed location); privileged and production roles elevated just-in-time via <b>PIM</b>; quarterly access reviews; break-glass admin accounts held separately.</p>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Group (naming)</th><th>Members</th><th>Purpose</th></tr></thead><tbody>
+      <tr><td class="item"><span class="mono">BCPC-FAB-{ENV}-Engineers</span></td><td>Data engineers</td><td>Build access in that environment's workspaces</td></tr>
+      <tr><td class="item"><span class="mono">BCPC-FAB-{ENV}-ReportAuthors</span></td><td>Analysts</td><td>Author semantic models / reports in that environment</td></tr>
+      <tr><td class="item"><span class="mono">BCPC-FAB-{ENV}-Consumers</span></td><td>Business users</td><td>View published reports (via app)</td></tr>
+      <tr><td class="item"><span class="mono">BCPC-DATA-{DOMAIN}-Stewards</span></td><td>Data stewards</td><td>Governance for a data domain (Pensions, Employer, Member)</td></tr>
+      <tr><td class="item"><span class="mono">BCPC-FAB-Platform-Admins</span></td><td>Platform team</td><td>Tenant / capacity administration — <b>PIM-enabled</b></td></tr>
+      <tr><td class="item"><span class="mono">BCPC-FAB-Auditors</span></td><td>Security / audit</td><td>Read + audit-log access across environments</td></tr>
+      <tr><td class="item"><span class="mono">BCPC-FAB-SPN-{ENV}</span></td><td>Service principals</td><td>Container for automation identities; scopes tenant API access</td></tr>
+    </tbody></table></div>
+
+    <h4>Fabric access control — defense in depth</h4>
+    <p class="cap">Five layers, each narrower than the last. A consumer passes tenant policy, sits on the capacity, gets <b>Viewer</b> on one workspace, sees only the published report, and even then only the rows and columns their data-level security allows.</p>
+    <div class="funnel">
+      <div class="flayer fw1 acc">Tenant guardrails <small>— SPN scope · no publish-to-web · no external share · labels</small></div>
+      <div class="flayer fw2">Capacity <small>— PROD isolated</small></div>
+      <div class="flayer fw3">Workspace roles <small>— Admin / Member / Contributor / Viewer</small></div>
+      <div class="flayer fw4">Item permissions <small>— per lakehouse / model / report</small></div>
+      <div class="flayer fw5">Data-level security <small>— row · column · masking</small></div>
+    </div>
+
+    <h4>Service principals &amp; managed identities</h4>
+    <p class="cap">Automation uses service principals (or managed identities where supported), never personal accounts. One SPN per environment, least privilege, secrets in Key Vault (certificate preferred), rotated, never in git. The "SPN can use Fabric APIs" tenant setting is scoped to the SPN group only.</p>
+    <div class="flow">
+      <div class="fnode">Deploy SPN<small>CI/CD · only path to change PROD</small></div>
+      <div class="fnode">Runtime SPN<small>scheduled runs</small></div>
+      <div class="fnode">Gateway / connection<small>read-only on source</small></div>
+      <span class="far">&rarr;</span>
+      <div class="fnode" style="border-top:3px solid var(--fabric)">Key Vault<small>per env · rotated · never in git</small></div>
+    </div>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Identity (per env)</th><th>Used for</th><th>Access</th><th>Credential</th></tr></thead><tbody>
+      <tr><td class="item">Deployment SPN</td><td>CI/CD — provision + promote code/config</td><td>Member on that env's workspaces; <b>only identity that changes PROD</b></td><td>Cert in env Key Vault</td></tr>
+      <tr><td class="item">Runtime SPN</td><td>Scheduled pipeline / notebook runs</td><td>Contributor on that env's workspaces</td><td>env Key Vault</td></tr>
+      <tr><td class="item">Gateway / connection account</td><td>Source connectivity via gateway</td><td><b>Read-only</b> on the source database</td><td>env Key Vault</td></tr>
+      <tr><td class="item">Managed identity <i>(preferred where supported)</i></td><td>Fabric-to-Azure resource access</td><td>Scoped to the specific resource</td><td>none to manage</td></tr>
+    </tbody></table></div>
+    <div class="note">Our control plane already follows this — it authenticates as a service principal, reads connection secrets from Key Vault at run time, and keeps no secrets (or host names) in git.</div>
+
+    <h4>Environment segregation — lower vs production</h4>
+    <p class="cap">Each environment is a hard boundary with its own workspaces, SPNs, Key Vault, and connections. <b>Production data never flows downward</b>; promotion moves code and configuration only.</p>
+    <div class="flow">
+      <div class="fnode">DEV <small>(lower)<br>own workspaces · SPN · Key Vault<br>masked / synthetic data</small></div>
+      <span class="far">&rarr;</span>
+      <div class="fnode">UAT <small>(lower)<br>own workspaces · SPN · Key Vault<br>representative data</small></div>
+      <span class="far">&rarr;</span>
+      <div class="fnode" style="border-top:3px solid var(--std-tx)">PROD <small>(restricted)<br>own everything · real data<br>PII governed · PIM access</small></div>
+    </div>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Isolated per environment</th><th>DEV</th><th>UAT</th><th>PROD</th></tr></thead><tbody>
+      <tr><td class="k2">Workspaces</td><td>separate</td><td>separate</td><td>separate</td></tr>
+      <tr><td class="k2">Capacity</td><td>shared acceptable</td><td>shared acceptable</td><td><b>dedicated (recommended)</b></td></tr>
+      <tr><td class="k2">Entra groups</td><td>own</td><td>own</td><td>own</td></tr>
+      <tr><td class="k2">Service principals</td><td>own</td><td>own</td><td>own</td></tr>
+      <tr><td class="k2">Key Vault (secrets)</td><td>own</td><td>own</td><td>own — <b>prod credentials only here</b></td></tr>
+      <tr><td class="k2">Source connection</td><td>DEV source</td><td>UAT source</td><td>PROD source</td></tr>
+      <tr><td class="k2">Data</td><td>masked / synthetic</td><td>masked / representative</td><td>real (PII governed)</td></tr>
+      <tr><td class="k2">Human change access</td><td>build freely</td><td>limited</td><td><b>none standing — promotion only</b></td></tr>
+    </tbody></table></div>
+
+    <h4>Who gets what — access matrix</h4>
+    <p class="cap">The core of an access-control review: which persona gets which level in which environment. Broad in DEV, tight in PROD, promotion-only for changes.</p>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Persona / identity</th><th>DEV</th><th>UAT</th><th>PROD</th></tr></thead><tbody>
+      <tr><td class="k2">Platform / Fabric Admin</td><td class="env">Admin (PIM)</td><td class="env">Admin (PIM)</td><td class="env"><b>Admin — PIM just-in-time + approval</b>; break-glass held separately</td></tr>
+      <tr><td class="k2">Data Engineer / Developer</td><td class="env">Contributor / Member (build)</td><td class="env">Viewer, or Contributor for fixes</td><td class="env"><b>No standing access</b> — changes via pipeline only</td></tr>
+      <tr><td class="k2">Data Steward</td><td class="env">Member (governance)</td><td class="env">Member</td><td class="env">Viewer + governance tooling (no data edits)</td></tr>
+      <tr><td class="k2">Report Author / Analyst</td><td class="env">Contributor (reporting workspace)</td><td class="env">Contributor (validate)</td><td class="env">Author in dedicated workspace only; <b>Viewer</b> on curated data</td></tr>
+      <tr><td class="k2">Business Consumer</td><td class="env">—</td><td class="env">Viewer (UAT sign-off)</td><td class="env"><b>Viewer via published app</b> only</td></tr>
+      <tr><td class="k2">Auditor / Security</td><td class="env">Viewer + audit logs</td><td class="env">Viewer + audit logs</td><td class="env">Viewer + audit logs</td></tr>
+      <tr><td class="k2">Deployment SPN (CI/CD)</td><td class="env">Member (deploy)</td><td class="env">Member (deploy)</td><td class="env">Member (deploy) — <b>only path to change PROD</b></td></tr>
+      <tr><td class="k2">Runtime SPN (scheduled)</td><td class="env">Contributor (run)</td><td class="env">Contributor (run)</td><td class="env">Contributor (run)</td></tr>
+      <tr><td class="k2">Gateway / connection account</td><td class="env">read-only DEV source</td><td class="env">read-only UAT source</td><td class="env">read-only PROD source</td></tr>
+    </tbody></table></div>
+
+    <h4>Data security &amp; privacy</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Control</th><th>Best practice</th></tr></thead><tbody>
+      <tr><td class="k2">PII minimization <span class="chip platform">Platform</span></td><td>Mask or exclude sensitive columns <b>at ingest</b> (Silver) — sensitive data need never land raw in OneLake.</td></tr>
+      <tr><td class="k2">Row / column security <span class="chip platform">Platform</span></td><td>OneLake row- and column-level security applied from config, consistently per environment.</td></tr>
+      <tr><td class="k2">Masking <span class="chip platform">Platform</span></td><td>Dynamic masking at query time + static masking during processing.</td></tr>
+      <tr><td class="k2">Sensitivity labels</td><td>Apply Microsoft Purview Information Protection labels (e.g. <i>Confidential – PII</i>); labels travel with the data.</td></tr>
+      <tr><td class="k2">Data residency</td><td>Host the Fabric capacity in a <b>Canadian region</b> (Canada Central / East); confirm no cross-geo processing.</td></tr>
+      <tr><td class="k2">Encryption</td><td>Encrypted at rest by default; evaluate <b>customer-managed keys</b> if BCPC policy requires.</td></tr>
+      <tr><td class="k2">DLP / export</td><td>Purview DLP policies for Fabric; <b>disable publish-to-web</b> and restrict export/download on sensitive workspaces.</td></tr>
+      <tr><td class="k2">No PII downstream</td><td>Lower environments and shared datasets carry masked/synthetic data only.</td></tr>
+    </tbody></table></div>
+
+    <h4>Data connections &amp; network controls</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Control</th><th>Best practice</th></tr></thead><tbody>
+      <tr><td class="k2">Connectivity path</td><td>Private only — through the data gateway or private endpoints; <b>no public internet path</b> to sources.</td></tr>
+      <tr><td class="k2">Connection credentials</td><td>Least-privilege, <b>read-only</b> source accounts; credentials in Key Vault, never in config or git.</td></tr>
+      <tr><td class="k2">Who can create connections</td><td>Restrict connection creation to platform admins / a defined group; share governed connections rather than scattering credentials.</td></tr>
+      <tr><td class="k2">Connection reuse</td><td>One governed connection per source per environment, reused — not per-user copies.</td></tr>
+      <tr><td class="k2">Gateway</td><td>Dedicated gateway VM(s); kept patched; clustered for HA if used for continuous mirroring.</td></tr>
+      <tr><td class="k2">Access gating</td><td>Conditional Access (MFA + compliant device + allowed location) on all Fabric / Power BI access.</td></tr>
+    </tbody></table></div>
+
+    <h4>Tenant-level guardrails (admin checklist)</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Tenant setting</th><th>Recommended for BCPC</th></tr></thead><tbody>
+      <tr><td class="k2">Service principals can use Fabric APIs</td><td><b>Enabled only for the <span class="mono">BCPC-FAB-SPN-*</span> group</b>, not org-wide</td></tr>
+      <tr><td class="k2">Publish to web</td><td><b>Disabled</b></td></tr>
+      <tr><td class="k2">External / guest sharing</td><td><b>Disabled</b> (or tightly restricted with approval)</td></tr>
+      <tr><td class="k2">Export &amp; download (Excel / CSV / …)</td><td><b>Restricted</b> for sensitive workspaces</td></tr>
+      <tr><td class="k2">Sensitivity labels</td><td><b>Enabled and enforced</b>; mandatory labelling on new items</td></tr>
+      <tr><td class="k2">Audit logging</td><td><b>Enabled</b>; logs shipped to BCPC's SIEM</td></tr>
+      <tr><td class="k2">Workspace creation</td><td><b>Restricted</b> to the platform team / request process</td></tr>
+      <tr><td class="k2">Capacity assignment</td><td><b>Restricted</b> — control which workspaces run on which capacity</td></tr>
+      <tr><td class="k2">Conditional Access</td><td><b>Enforced</b> on the Fabric / Power BI service</td></tr>
     </tbody></table></div>
   </section>
 

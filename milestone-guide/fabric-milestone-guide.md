@@ -154,6 +154,11 @@ flowchart TB
 rows and columns, then masked values — all granted through **Entra groups** and recorded in
 **audit**.*
 
+> Because BCPC is a crown corporation, the full **Entra security model, service-principal usage,
+> DEV/UAT/PROD segregation, and a who-gets-what access matrix** are set out in the
+> **[Security, Access & Environment Model](#security-access--environment-model--best-practice-design)**
+> deep-dive near the end of this guide.
+
 | Item | What it means in Fabric | How we control it |
 |---|---|---|
 | **Define Entra Security Group Strategy** | Using Microsoft Entra ID groups (not individuals) to grant access. | **Both.** Access is granted to Entra groups; our security config references those groups so membership — not per-person edits — drives access. |
@@ -301,6 +306,182 @@ model**, with **security enforced end-to-end**. The items below govern each hop.
 | **Validate Semantic Model Integration** | Confirming Power BI reads the Gold model efficiently (Direct Lake, no data copy). | **Both.** Gold is Direct-Lake-ready; we validate reports read it live without import refresh. |
 | **Validate Security Integration** | Confirming access rules (row/column security) carry through to reports. | **Platform.** Row- and column-level security applied at the lakehouse flows through to the model and report — one rule, enforced end-to-end. |
 | **Validate Workspace Strategy** | Confirming the workspace/app layout works for real authoring and consumption. | **Standard.** Validate the build-vs-consume workspace split with a real report and audience before rolling out broadly. |
+
+---
+
+---
+
+## Security, Access & Environment Model — best-practice design
+
+*BCPC is a government crown corporation: access control, data privacy, and environment isolation are
+first-order requirements, not afterthoughts. This section expands the Security and Governance items
+above into a concrete, best-practice design. It is a recommendation to adopt and refine with BCPC's
+security team — the platform already provides the enforcement mechanisms it relies on.*
+
+**Guiding principles**
+
+- **Group-based, never individual.** All access is granted to Microsoft Entra ID security groups; you
+  change *membership*, never per-person permissions.
+- **Least privilege + just-in-time.** People get the minimum role; privileged and production access is
+  granted on demand through **PIM** (Privileged Identity Management) with approval — not standing.
+- **People and machines don't mix.** Humans never authenticate as service principals; automation never
+  runs as a personal account.
+- **Production data stays in production.** Lower environments use masked, synthetic, or subset data.
+- **Change production only by promotion.** No manual edits in PROD — changes flow through the
+  deployment pipeline, executed by a service principal.
+- **Everything is auditable.** Access grants, data reads, and pipeline actions are all logged.
+
+### Entra ID security model
+
+```mermaid
+flowchart LR
+    People["People<br/>engineers · stewards<br/>authors · admins"] --> Groups["Entra security groups<br/>BCPC-FAB-{ENV}-{ROLE}"]
+    SPN["Service principals<br/>(automation only)"] --> SPNG["SPN groups<br/>BCPC-FAB-SPN-{ENV}"]
+    Groups --> Assign["Workspace / capacity<br/>role assignment"]
+    SPNG --> Assign
+    SPNG --> API["Scoped tenant<br/>API access"]
+    PIM["PIM just-in-time"] -. elevates .-> Groups
+    CA["Conditional Access<br/>MFA · device · location"] -. gates .-> People
+```
+
+Access is assigned to **groups**, and the groups are assigned to workspaces and capacities. Adding or
+removing a person is a membership change — the permission model never changes.
+
+| Group (naming convention) | Members | Purpose |
+|---|---|---|
+| `BCPC-FAB-{ENV}-Engineers` | Data engineers | Build access in that environment's workspaces |
+| `BCPC-FAB-{ENV}-ReportAuthors` | Analysts | Author semantic models / reports in that environment |
+| `BCPC-FAB-{ENV}-Consumers` | Business users | View published reports (via app) |
+| `BCPC-DATA-{DOMAIN}-Stewards` | Data stewards | Governance for a data domain (Pensions, Employer, Member) |
+| `BCPC-FAB-Platform-Admins` | Platform team | Tenant / capacity administration — **PIM-enabled** |
+| `BCPC-FAB-Auditors` | Security / audit | Read + audit-log access across environments |
+| `BCPC-FAB-SPN-{ENV}` | Service principals | Container for automation identities; scopes tenant API access |
+
+*Supporting controls:* **Conditional Access** (MFA + compliant device + allowed location) on all Fabric
+access; **PIM** for admin and production roles; **quarterly access reviews**; and separately-held
+**break-glass** admin accounts excluded from Conditional Access for emergencies only.
+
+### Fabric access control — defense in depth
+
+```mermaid
+flowchart TB
+    T["Tenant guardrails<br/>SPN scope · no publish-to-web · no external share · labels"] --> C["Capacity<br/>(PROD isolated)"]
+    C --> W["Workspace roles<br/>Admin / Member / Contributor / Viewer"]
+    W --> I["Item permissions<br/>per lakehouse / model / report"]
+    I --> D["Data-level security<br/>row · column · masking"]
+```
+
+Access is controlled at **five layers**, each narrower than the last. A consumer, for example, passes
+tenant policy, sits on the capacity, gets **Viewer** on one workspace, sees only the published report
+item, and even then only the **rows and columns** their data-level security allows.
+
+### Service principals (SPNs) and managed identities
+
+Automation — deployment, scheduled runs, and source connections — uses **service principals** (or
+managed identities where Fabric supports them), never personal accounts. Best practice:
+
+- **One SPN per environment**, so a lower-environment credential can never touch production.
+- **Least privilege** — grant the SPN only the workspace role it needs, not tenant admin.
+- **Secrets/certificates in Key Vault** (certificate auth preferred over secrets), **rotated** on a
+  schedule, **never in git**.
+- Enable the tenant setting *"service principals can use Fabric APIs"* **only for the `BCPC-FAB-SPN-*`
+  group**, not the whole organization.
+
+```mermaid
+flowchart LR
+    Deploy["Deploy SPN<br/>(CI/CD — only path to change PROD)"] --> KV[(Key Vault<br/>per environment)]
+    Runtime["Runtime SPN<br/>(scheduled runs)"] --> KV
+    Conn["Gateway / connection acct<br/>(read-only on source)"] --> KV
+    KV --> P["least privilege · certificate-preferred<br/>rotated · never in git"]
+```
+
+| Identity (per environment) | Used for | Access | Credential |
+|---|---|---|---|
+| **Deployment SPN** | CI/CD — provision + promote code/config | Member on that env's workspaces; **the only identity that changes PROD** | Cert in that env's Key Vault |
+| **Runtime SPN** | Scheduled pipeline / notebook execution | Contributor on that env's workspaces | env Key Vault |
+| **Gateway / connection account** | Source connectivity via the gateway | **Read-only** on the source database (least privilege) | env Key Vault |
+| **Managed identity** *(preferred where supported)* | Fabric-to-Azure resource access | Scoped to the specific resource | none to manage |
+
+*Our control plane already follows this:* it authenticates as a service principal, reads connection
+secrets from Key Vault at run time, and keeps no secrets (or host names) in git.
+
+### Environment segregation — lower vs production
+
+```mermaid
+flowchart LR
+    DEV["DEV (lower)<br/>own workspaces · SPN · Key Vault<br/>masked / synthetic data"] -->|"promote code + config<br/>(never data)"| UAT["UAT (lower)<br/>own workspaces · SPN · Key Vault<br/>representative data"]
+    UAT -->|promote| PROD["PROD (restricted)<br/>own workspaces · SPN · Key Vault<br/>real data · PII governed · PIM access"]
+```
+
+Every environment is a hard boundary with its **own** workspaces, service principals, Key Vault, and
+source connections. **Production data never flows downward** — lower environments run on masked or
+synthetic data. Promotion moves **code and configuration only**, through the deployment pipeline.
+
+| Isolated per environment | DEV | UAT | PROD |
+|---|---|---|---|
+| Workspaces | separate | separate | separate |
+| Capacity | shared acceptable | shared acceptable | **dedicated (recommended)** |
+| Entra groups | own | own | own |
+| Service principals | own | own | own |
+| Key Vault (secrets) | own | own | own — **prod credentials live only here** |
+| Source connection | DEV source | UAT source | PROD source |
+| Data | masked / synthetic | masked / representative | real (PII governed) |
+| Human change access | build freely | limited | **none standing — promotion only** |
+
+### Who gets what — access matrix
+
+*The core of an access-control review: which persona gets which level in which environment. Adjust with
+BCPC's security team, but the shape — broad in DEV, tight in PROD, promotion-only for changes — should hold.*
+
+| Persona / identity | DEV | UAT | PROD |
+|---|---|---|---|
+| **Platform / Fabric Admin** | Admin (PIM) | Admin (PIM) | Admin — **PIM just-in-time + approval**; break-glass held separately |
+| **Data Engineer / Developer** | Contributor / Member (build) | Viewer, or Contributor for fixes | **No standing access** — changes via pipeline only |
+| **Data Steward** | Member (governance) | Member | Viewer + governance tooling (no data edits) |
+| **Report Author / Analyst** | Contributor (reporting workspace) | Contributor (validate) | Author only in a dedicated authoring workspace; **Viewer** on curated data |
+| **Business Consumer** | — | Viewer (UAT sign-off) | **Viewer via published app** only |
+| **Auditor / Security** | Viewer + audit logs | Viewer + audit logs | Viewer + audit logs |
+| **Deployment SPN** (CI/CD) | Member (deploy) | Member (deploy) | Member (deploy) — **only path to change PROD** |
+| **Runtime SPN** (scheduled) | Contributor (run) | Contributor (run) | Contributor (run) |
+| **Gateway / connection account** | read-only on DEV source | read-only on UAT source | read-only on PROD source |
+
+### Data security & privacy
+
+| Control | Best practice |
+|---|---|
+| **PII minimization** | Mask or exclude sensitive columns **at ingest** (Silver) — sensitive data need never land raw in OneLake. *(Platform.)* |
+| **Row / column security** | OneLake row- and column-level security applied from config, consistently per environment. *(Platform.)* |
+| **Masking** | Dynamic masking at query time + static masking during processing. *(Platform.)* |
+| **Sensitivity labels** | Apply Microsoft Purview Information Protection labels (e.g. *Confidential – PII*) to items; labels travel with the data. |
+| **Data residency** | Host the Fabric capacity in a **Canadian region** (Canada Central / Canada East); confirm no cross-geo processing for a crown corporation. |
+| **Encryption** | Encrypted at rest by default; evaluate **customer-managed keys** if BCPC policy requires. |
+| **DLP / export** | Microsoft Purview DLP policies for Fabric; **disable publish-to-web** and restrict export/download on sensitive workspaces. |
+| **No PII downstream** | Lower environments and shared datasets carry masked/synthetic data only. |
+
+### Data connections & network controls
+
+| Control | Best practice |
+|---|---|
+| **Connectivity path** | Private only — through the data gateway or private endpoints; **no public internet path** to sources. |
+| **Connection credentials** | Least-privilege, **read-only** source accounts; credentials in Key Vault, never in config or git. |
+| **Who can create connections** | Restrict connection creation to platform admins / a defined group; **share** governed connections rather than scattering credentials. |
+| **Connection reuse** | One governed connection per source per environment, reused — not per-user copies. |
+| **Gateway** | Dedicated gateway VM(s); kept patched; clustered for HA if used for continuous mirroring. |
+| **Access gating** | Conditional Access (MFA + compliant device + allowed location) on all Fabric / Power BI access. |
+
+### Tenant-level guardrails (admin checklist)
+
+| Tenant setting | Recommended for BCPC |
+|---|---|
+| Service principals can use Fabric APIs | **Enabled only for the `BCPC-FAB-SPN-*` group**, not org-wide |
+| Publish to web | **Disabled** |
+| External / guest sharing | **Disabled** (or tightly restricted with approval) |
+| Export & download (Excel / CSV / …) | **Restricted** for sensitive workspaces |
+| Sensitivity labels | **Enabled and enforced**; mandatory labelling on new items |
+| Audit logging | **Enabled**; logs shipped to BCPC's SIEM |
+| Workspace creation | **Restricted** to the platform team / request process |
+| Capacity assignment | **Restricted** — control which workspaces run on which capacity |
+| Conditional Access | **Enforced** on the Fabric / Power BI service |
 
 ---
 
