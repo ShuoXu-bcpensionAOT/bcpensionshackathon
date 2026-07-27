@@ -433,6 +433,13 @@ flowchart TB
 at the **env-local hub** — they are *not* promoted as content. This guarantees a UAT spoke can only
 ever reference UAT data, never PROD. (Promote code/config — never data, never cross-env pointers.)
 
+> **Validated in our tenant (DEV → UAT).** We created a feature spoke in DEV — a lakehouse with
+> OneLake shortcuts to the hub's Gold — paired it to a UAT spoke in a Fabric **deployment pipeline**,
+> and deployed. The pipeline **successfully promoted** the lakehouse *and* its shortcuts to UAT — but
+> the promoted shortcuts **still pointed at the DEV hub**. That is exactly the cross-environment leak
+> this rule prevents. The fix: **provision shortcuts per environment** (template, pointing at the
+> env-local hub) or add a **deployment rule** to rebind the source — never promote shortcuts blindly.
+
 | Spoke element | Provisioned by platform template (per env) | Promoted by domain (Fabric CI/CD) |
 |---|---|---|
 | Workspace | yes | — |
