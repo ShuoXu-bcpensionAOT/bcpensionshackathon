@@ -394,7 +394,7 @@ security-sensitive shop.*
 
 | Consideration | What to do |
 |---|---|
-| **RLS through shortcuts** | Define row/column security at the **hub** using **OneLake Security** (storage-layer). Column security flows to consumers, and hub-side row security is enforced — but RLS propagation through cross-workspace shortcuts has **known gotchas** if done the older way, so **validate** that a spoke user sees only permitted rows/columns *before go-live*. |
+| **RLS through shortcuts** | Define row/column security at the **hub** using **OneLake Security** (storage-layer). Column security flows to consumers, and hub-side row security is enforced — but RLS propagation through cross-workspace shortcuts has **known gotchas** if done the older way, so **validate** that a spoke user sees only permitted rows/columns *before go-live* (see References). |
 | **Shortcut, don't re-copy** | Standard: spokes **reference** hub Gold by shortcut and must not re-ingest or copy it — prevents drift and duplicate governance. |
 | **Data-product contracts** | Hub Gold schema changes ripple to spokes; treat Gold as **versioned contracts** with change notice to consumers. |
 | **Warehouses extend, not re-derive** | Spoke warehouses build marts **on top of** certified Gold; they should not re-implement the Gold transformations (avoids logic drift). |
@@ -402,9 +402,85 @@ security-sensitive shop.*
 | **Capacity planning** | Shortcut query compute is billed to the **consuming** spoke's capacity — good for chargeback, but size each spoke capacity for its workload. |
 | **Environment model still applies** | Each of **DEV / UAT / PROD** has its own hub *and* its own spokes; the promotion and access rules in the Security section apply within each environment. |
 
+### Promotion & CI/CD across hub and spokes
+
+*Two things get promoted, by two owners, on **three tracks** — plus the template that stamps out the
+spoke skeletons.*
+
+```mermaid
+flowchart TB
+    subgraph PLAT["Platform team"]
+      HUBC["Hub content<br/>ingestion · medallion · security"] -->|"config-as-code<br/>cp_bootstrap / cp_config"| HUBP["DEV → UAT → PROD (hub)"]
+      SCAF["Spoke scaffold<br/>workspace · lakehouse · shortcuts · access · capacity"] -->|"deployment template<br/>per environment"| SCAFP["DEV → UAT → PROD (spoke skeletons)"]
+    end
+    subgraph DOM["Domain teams"]
+      SPKC["Spoke content<br/>reports · semantic models · warehouse"] -->|"Fabric Git + deployment pipeline"| SPKP["DEV → UAT → PROD (spoke content)"]
+    end
+```
+
+- **Hub content — platform team, config-as-code.** Our control plane already promotes the whole
+  medallion (ingestion, DQ, gold, security) **identically** DEV → UAT → PROD via GitHub Actions →
+  `cp_bootstrap` / `cp_config`. The deploy service principal is the only identity that changes PROD.
+- **Spoke scaffold — platform team, deployment template.** The same template provisions each
+  predefined spoke workspace **per environment**: the workspace, its lakehouse, its **shortcuts to
+  that environment's hub Gold**, Entra role assignments, and capacity. One command, all environments.
+- **Spoke content — domain teams, Fabric CI/CD.** Each domain owns its reports, semantic models, and
+  any warehouse logic, and promotes them DEV-spoke → UAT-spoke → PROD-spoke using **Git integration +
+  Fabric deployment pipelines** ([deployment pipelines](https://learn.microsoft.com/en-us/fabric/cicd/deployment-pipelines/intro-to-deployment-pipelines) · [Git](https://learn.microsoft.com/en-us/fabric/cicd/git-integration/intro-to-git-integration)), with
+  deployment rules for any per-env bits.
+
+**The critical shortcut rule.** Shortcuts are **provisioned per environment by the template** and point
+at the **env-local hub** — they are *not* promoted as content. This guarantees a UAT spoke can only
+ever reference UAT data, never PROD. (Promote code/config — never data, never cross-env pointers.)
+
+| Spoke element | Provisioned by platform template (per env) | Promoted by domain (Fabric CI/CD) |
+|---|---|---|
+| Workspace | yes | — |
+| Lakehouse | yes | — |
+| Shortcuts to hub Gold | yes — **env-local, never cross-env** | — |
+| Entra role assignments | yes | — |
+| Capacity assignment | yes | — |
+| Semantic models | — | yes |
+| Reports | — | yes |
+| Warehouse (custom logic) | optional empty scaffold | yes (the logic) |
+
+**Should we stand up spokes in the lower environments?** Yes:
+
+- **At minimum UAT + PROD**, so business users validate in UAT (on masked / representative data) before
+  anything reaches PROD — this is the UAT sign-off in the access matrix.
+- **Full DEV + UAT + PROD** for any domain that actually *builds* content (custom models, warehouses) —
+  they need a DEV spoke to develop and a promotion path.
+- A **pure-consumer** domain (reports only, on certified Gold) can start with UAT + PROD and add DEV later.
+- Lower-env spokes shortcut to the **lower-env hub**, so testing uses safe (masked/synthetic) data —
+  consistent with the privacy model.
+
+**Is it easy to add spokes to the deployment template?** Yes — a natural extension of the template we
+already have, not new infrastructure:
+
+- Add a **`feature_workspaces`** (spokes) list to the manifest: name, domain, the hub Gold tables to
+  shortcut, and the Entra groups + capacity to assign.
+- `cp_bootstrap` loops the list and, per spoke, creates the workspace, its lakehouse, the shortcuts
+  (env-local hub), the role assignments, and the capacity binding — the **same REST patterns we already
+  use for the hub**, plus a shortcut-creation helper ([OneLake shortcuts](https://learn.microsoft.com/en-us/fabric/onelake/onelake-shortcuts)).
+- **Idempotent** and per-environment: `deploy DEV|UAT|PROD` brings up the hub **and** its full set of
+  spokes in one command.
+- New spokes are added through the workspace-creation process (a config entry), keeping the set
+  governed and consistent.
+
+> *This spoke-provisioning is a recommended enhancement to the current template — which today
+> provisions the hub. The workspace / lakehouse / role-assignment APIs are already in use, so it is
+> incremental work, not a rebuild.*
+
 > **How it maps to the milestones.** This topology realizes Milestone 1's *Define Workspace Structure*,
 > *Domain Alignment Strategy*, *Lakehouse Organization Standards*, and *Data Sharing Standards*; the
 > Milestone 3 semantic models and reports are what live in the spokes.
+
+### References
+
+- OneLake shortcuts — [overview](https://learn.microsoft.com/en-us/fabric/onelake/onelake-shortcuts) · [secure & manage shortcuts](https://learn.microsoft.com/en-us/fabric/onelake/onelake-shortcut-security)
+- OneLake Security — [access-control model](https://learn.microsoft.com/en-us/fabric/onelake/security/data-access-control-model) · [with shortcuts (RLS/CLS behavior)](https://blog.fabric.microsoft.com/en-us/blog/understanding-onelake-security-with-shortcuts/)
+- Fabric domains (data mesh) — [domains](https://learn.microsoft.com/en-us/fabric/governance/domains)
+- CI/CD — [deployment pipelines](https://learn.microsoft.com/en-us/fabric/cicd/deployment-pipelines/intro-to-deployment-pipelines) · [Git integration](https://learn.microsoft.com/en-us/fabric/cicd/git-integration/intro-to-git-integration)
 
 ---
 

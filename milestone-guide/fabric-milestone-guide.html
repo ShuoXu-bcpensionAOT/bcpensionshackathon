@@ -70,6 +70,9 @@
   .why{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:10px;margin:6px 0 2px;counter-reset:w;}
   .why .w{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 13px 11px 38px;font-size:12.8px;position:relative;}
   .why .w::before{counter-increment:w;content:counter(w);position:absolute;left:11px;top:11px;width:18px;height:18px;border-radius:50%;background:var(--fabric);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;}
+  a{color:var(--accent);text-underline-offset:2px;}
+  ul.refs{font-size:13px;margin:6px 0 2px;padding-left:18px;}
+  ul.refs li{margin:4px 0;}
   .mx td .chip{margin-bottom:6px;}
   .mx tbody tr:hover{background:var(--panel2);}
   @media(max-width:720px){ .mx td.item{width:auto;} .mx{min-width:640px;} }
@@ -430,7 +433,52 @@
       <tr><td class="k2">Capacity planning</td><td>Shortcut query compute bills the <b>consuming</b> spoke's capacity — good for chargeback, but size each spoke capacity for its workload.</td></tr>
       <tr><td class="k2">Environment model still applies</td><td>Each of <b>DEV / UAT / PROD</b> has its own hub <i>and</i> its own spokes; the promotion and access rules below apply within each environment.</td></tr>
     </tbody></table></div>
+    <h4>Promotion &amp; CI/CD across hub and spokes</h4>
+    <p class="cap">Two things get promoted, by two owners, on <b>three tracks</b> — plus the template that stamps out the spoke skeletons.</p>
+    <div class="spokes">
+      <div class="spoke"><h6>1 · Hub content</h6><div class="step">Owner: Platform team</div><div class="step">config-as-code · cp_bootstrap / cp_config</div><div class="step">ingestion · medallion · security</div><div class="own">DEV &rarr; UAT &rarr; PROD (hub)</div></div>
+      <div class="spoke"><h6>2 · Spoke scaffold</h6><div class="step">Owner: Platform team</div><div class="step">deployment template · per environment</div><div class="step">workspace · lakehouse · shortcuts · access · capacity</div><div class="own">DEV &rarr; UAT &rarr; PROD (skeletons)</div></div>
+      <div class="spoke"><h6>3 · Spoke content</h6><div class="step">Owner: Domain teams</div><div class="step">Fabric Git + deployment pipeline</div><div class="step">reports · semantic models · warehouse</div><div class="own">DEV &rarr; UAT &rarr; PROD (content)</div></div>
+    </div>
+    <div class="note"><b>The critical shortcut rule.</b> Shortcuts are provisioned <b>per environment</b> by the template and point at the <b>env-local hub</b> — never promoted as content. A UAT spoke can only reference UAT data, never PROD. (Promote code/config — never data or cross-env pointers.)</div>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Spoke element</th><th>Provisioned by template (per env)</th><th>Promoted by domain (Fabric CI/CD)</th></tr></thead><tbody>
+      <tr><td class="k2">Workspace</td><td>yes</td><td>—</td></tr>
+      <tr><td class="k2">Lakehouse</td><td>yes</td><td>—</td></tr>
+      <tr><td class="k2">Shortcuts to hub Gold</td><td>yes — <b>env-local, never cross-env</b></td><td>—</td></tr>
+      <tr><td class="k2">Entra role assignments</td><td>yes</td><td>—</td></tr>
+      <tr><td class="k2">Capacity assignment</td><td>yes</td><td>—</td></tr>
+      <tr><td class="k2">Semantic models</td><td>—</td><td>yes</td></tr>
+      <tr><td class="k2">Reports</td><td>—</td><td>yes</td></tr>
+      <tr><td class="k2">Warehouse (custom logic)</td><td>optional empty scaffold</td><td>yes (the logic)</td></tr>
+    </tbody></table></div>
+
+    <h4>Spokes in the lower environments?</h4>
+    <div class="why">
+      <div class="w"><b>Minimum: UAT + PROD.</b> Business users validate in UAT on masked / representative data before anything reaches PROD (the UAT sign-off in the access matrix).</div>
+      <div class="w"><b>Full DEV + UAT + PROD</b> for any domain that builds content (custom models, warehouses) — they need a DEV spoke and a promotion path.</div>
+      <div class="w"><b>Pure-consumer domains</b> (reports on certified Gold) can start with UAT + PROD and add DEV later.</div>
+      <div class="w"><b>Lower-env spokes shortcut to the lower-env hub</b>, so testing uses safe masked/synthetic data — consistent with the privacy model.</div>
+    </div>
+
+    <h4>Adding spokes to the deployment template</h4>
+    <p class="cap">A natural extension of the template we already have (which provisions the hub) — not new infrastructure.</p>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Step</th><th>What happens</th></tr></thead><tbody>
+      <tr><td class="k2">Declare</td><td>Add a <span class="mono">feature_workspaces</span> list to the manifest: name, domain, hub Gold tables to shortcut, Entra groups + capacity.</td></tr>
+      <tr><td class="k2">Provision</td><td><span class="mono">cp_bootstrap</span> loops the list: per spoke it creates the workspace, lakehouse, env-local shortcuts, role assignments, and capacity binding — the same REST patterns used for the hub, plus a shortcut helper.</td></tr>
+      <tr><td class="k2">Repeat per env</td><td>Idempotent: <span class="mono">deploy DEV|UAT|PROD</span> brings up the hub <b>and</b> its full set of spokes in one command.</td></tr>
+      <tr><td class="k2">Govern</td><td>New spokes are added through the workspace-creation process (a config entry) — the set stays governed and consistent.</td></tr>
+    </tbody></table></div>
+    <div class="note">This spoke-provisioning is a <b>recommended enhancement</b> to the current template. The workspace / lakehouse / role-assignment APIs are already in use, so it's incremental work, not a rebuild.</div>
+
     <div class="note">This topology realizes Milestone 1's <i>Workspace Structure</i>, <i>Domain Alignment</i>, <i>Lakehouse Standards</i>, and <i>Data Sharing</i> items; the Milestone 3 semantic models and reports are what live in the spokes.</div>
+
+    <h4>References</h4>
+    <ul class="refs">
+      <li>OneLake shortcuts — <a href="https://learn.microsoft.com/en-us/fabric/onelake/onelake-shortcuts">overview</a> · <a href="https://learn.microsoft.com/en-us/fabric/onelake/onelake-shortcut-security">secure &amp; manage</a></li>
+      <li>OneLake Security — <a href="https://learn.microsoft.com/en-us/fabric/onelake/security/data-access-control-model">access-control model</a> · <a href="https://blog.fabric.microsoft.com/en-us/blog/understanding-onelake-security-with-shortcuts/">with shortcuts (RLS/CLS behavior)</a></li>
+      <li>Fabric domains (data mesh) — <a href="https://learn.microsoft.com/en-us/fabric/governance/domains">domains</a></li>
+      <li>CI/CD — <a href="https://learn.microsoft.com/en-us/fabric/cicd/deployment-pipelines/intro-to-deployment-pipelines">deployment pipelines</a> · <a href="https://learn.microsoft.com/en-us/fabric/cicd/git-integration/intro-to-git-integration">Git integration</a></li>
+    </ul>
   </section>
 
   <!-- ============ SECURITY DEEP DIVE ============ -->
