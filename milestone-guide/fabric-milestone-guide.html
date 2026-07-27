@@ -57,6 +57,19 @@
   .mono{font-family:'Cascadia Code',Consolas,monospace;font-size:12px;background:var(--panel2);padding:1px 5px;border-radius:5px;}
   .sec-head h3{color:var(--ink);}
   section.sec{border-color:color-mix(in srgb,var(--accent) 30%,var(--line));}
+  .hub{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--panel2);}
+  .hub .bt{font-weight:750;font-size:13.5px;} .hub .bs{color:var(--muted);font-size:12px;}
+  .shortcut{text-align:center;color:var(--accent);font-weight:700;font-size:12.5px;margin:14px 0 12px;}
+  .shortcut .dn{font-size:18px;letter-spacing:12px;display:block;line-height:1;margin-top:3px;}
+  .spokes{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+  .spoke{border:1px solid var(--line);border-top:3px solid var(--fabric);border-radius:12px;padding:12px 14px;background:var(--panel);}
+  .spoke h6{margin:0 0 8px;font-size:13.5px;font-weight:750;}
+  .spoke .step{font-size:12px;padding:5px 0;border-bottom:1px dashed var(--line);}
+  .spoke .step:last-child{border-bottom:none;}
+  .spoke .own{color:var(--muted);font-size:11px;margin-top:7px;}
+  .why{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:10px;margin:6px 0 2px;counter-reset:w;}
+  .why .w{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 13px 11px 38px;font-size:12.8px;position:relative;}
+  .why .w::before{counter-increment:w;content:counter(w);position:absolute;left:11px;top:11px;width:18px;height:18px;border-radius:50%;background:var(--fabric);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;}
   .mx td .chip{margin-bottom:6px;}
   .mx tbody tr:hover{background:var(--panel2);}
   @media(max-width:720px){ .mx td.item{width:auto;} .mx{min-width:640px;} }
@@ -358,6 +371,66 @@
       <tr><td class="item">Validate Security Integration</td><td class="fab">Confirming access rules (row/column security) carry through to reports.</td><td class="ctl"><span class="chip platform">Platform</span>Row- and column-level security applied at the lakehouse flows through to the model and report — one rule, end-to-end.</td></tr>
       <tr><td class="item">Validate Workspace Strategy</td><td class="fab">Confirming the workspace/app layout works for real authoring and consumption.</td><td class="ctl"><span class="chip standard">Standard</span>Validate the build-vs-consume split with a real report and audience before rolling out broadly.</td></tr>
     </tbody></table></div>
+  </section>
+
+  <!-- ============ HUB & SPOKE TOPOLOGY ============ -->
+  <section class="ms sec">
+    <div class="ms-head sec-head"><h2 class="ms">Deep Dive</h2><h3>Platform Topology — Hub &amp; Spoke</h3></div>
+    <p class="ms-goal">The recommended shape: load data once into a central <b>hub</b>, and let each business area work in its own <b>spoke</b> workspace that references the hub's data through <b>OneLake shortcuts</b> — no copies. Microsoft's enterprise pattern for Fabric, and a good fit for BCPC.</p>
+
+    <h4>The pattern</h4>
+    <div class="hub">
+      <div class="bt">Central HUB workspace — Platform team</div>
+      <div class="bs">all ingestion + the medallion · certified Gold lives here · <b>one physical copy</b> (this is what our control plane produces)</div>
+      <div class="med">
+        <div class="pill b">Bronze<small>raw</small></div><span class="ar">&rarr;</span>
+        <div class="pill s">Silver<small>clean · governed</small></div><span class="ar">&rarr;</span>
+        <div class="pill g">Gold<small>certified data products</small></div>
+      </div>
+    </div>
+    <div class="shortcut">OneLake shortcuts — no copy<span class="dn">&darr;&nbsp;&darr;&nbsp;&darr;</span></div>
+    <div class="spokes">
+      <div class="spoke"><h6>Spoke: Pensions</h6><div class="step">Lakehouse + shortcuts</div><div class="step">Warehouse (optional)</div><div class="step">Semantic model + reports</div><div class="own">Domain team · own capacity</div></div>
+      <div class="spoke"><h6>Spoke: Employer</h6><div class="step">Lakehouse + shortcuts</div><div class="step">Semantic model + reports</div><div class="own">Domain team · own capacity</div></div>
+      <div class="spoke"><h6>Spoke: Member</h6><div class="step">Lakehouse + shortcuts</div><div class="step">Reports</div><div class="own">Domain team · own capacity</div></div>
+      <div class="spoke"><h6>Spoke: Finance …</h6><div class="step">Lakehouse + shortcuts</div><div class="step">Warehouse + reports</div><div class="own">Domain team · own capacity</div></div>
+    </div>
+    <p class="cap"><b>Shortcuts</b> are references, not copies — the data stays in the hub, governed once, and every spoke sees the same single source of truth.</p>
+
+    <h4>Why this is the right design for BCPC</h4>
+    <div class="why">
+      <div class="w"><b>One copy, one truth.</b> Ingested once into the hub; spokes reference it — no copies to reconcile, consistent numbers, less storage.</div>
+      <div class="w"><b>Ownership matches the org.</b> Platform team owns the hub; domains own their spokes — the governance model made physical, mapped to Fabric domains.</div>
+      <div class="w"><b>Self-service, no bottleneck.</b> Domains build freely on governed, certified data; the platform team isn't in the path of every report.</div>
+      <div class="w"><b>Security isolation.</b> Hub write-locked to the platform team; spokes get least-privilege access; row/column security defined once at the hub and enforced everywhere.</div>
+      <div class="w"><b>Governed consumption.</b> Spokes consume certified Gold products, discovered via domains / the OneLake catalog.</div>
+      <div class="w"><b>Cost isolation + chargeback.</b> Spokes run on their own capacity, so query cost lands on the domain that incurs it; a heavy spoke can't starve ingestion.</div>
+      <div class="w"><b>Flexibility.</b> A spoke needing T-SQL or extra marts builds its own Warehouse over the shortcuts — without polluting the hub.</div>
+      <div class="w"><b>No rework for us.</b> Our control plane is the hub engine; its Gold layer is the certified products spokes shortcut to.</div>
+    </div>
+
+    <h4>Hub vs Spoke — who owns what</h4>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Concern</th><th>Hub (Platform team)</th><th>Spoke (Domain team)</th></tr></thead><tbody>
+      <tr><td class="k2">Owns</td><td>ingestion, Bronze / Silver, certified Gold</td><td>own lakehouse, warehouse, semantic models, reports</td></tr>
+      <tr><td class="k2">Writes data</td><td>yes — only the platform service principal</td><td>no writes to the hub; writes only in its own workspace</td></tr>
+      <tr><td class="k2">Consumes</td><td>—</td><td>shortcuts to hub Gold (no copy)</td></tr>
+      <tr><td class="k2">Security</td><td>defines RLS / CLS / masking once (OneLake Security)</td><td>inherits hub security; sets report / item access</td></tr>
+      <tr><td class="k2">Capacity</td><td>platform capacity</td><td>its own capacity (chargeback)</td></tr>
+      <tr><td class="k2">Governance</td><td>certifies data products</td><td>consumes certified products; certifies its own reports/models</td></tr>
+    </tbody></table></div>
+
+    <h4>Design considerations to get right</h4>
+    <p class="cap">The pattern is sound, but a few things must be designed deliberately for a security-sensitive shop.</p>
+    <div class="mx-wrap"><table class="mx"><thead><tr><th>Consideration</th><th>What to do</th></tr></thead><tbody>
+      <tr><td class="k2">RLS through shortcuts</td><td>Define row/column security at the <b>hub</b> using <b>OneLake Security</b> (storage layer). Column security flows to consumers, and hub-side row security is enforced — but RLS propagation through cross-workspace shortcuts has <b>known gotchas</b> if done the older way, so <b>validate</b> a spoke user sees only permitted rows/columns before go-live.</td></tr>
+      <tr><td class="k2">Shortcut, don't re-copy</td><td>Spokes <b>reference</b> hub Gold by shortcut and must not re-ingest or copy it — prevents drift and duplicate governance.</td></tr>
+      <tr><td class="k2">Data-product contracts</td><td>Hub Gold schema changes ripple to spokes; treat Gold as <b>versioned contracts</b> with change notice.</td></tr>
+      <tr><td class="k2">Warehouses extend, not re-derive</td><td>Spoke warehouses build marts <b>on top of</b> certified Gold; don't re-implement the Gold transformations (avoids logic drift).</td></tr>
+      <tr><td class="k2">Direct Lake over shortcuts</td><td>Semantic models can use <b>Direct Lake</b> on shortcuts to Delta Gold; validate no unexpected DirectQuery fallback for your cases.</td></tr>
+      <tr><td class="k2">Capacity planning</td><td>Shortcut query compute bills the <b>consuming</b> spoke's capacity — good for chargeback, but size each spoke capacity for its workload.</td></tr>
+      <tr><td class="k2">Environment model still applies</td><td>Each of <b>DEV / UAT / PROD</b> has its own hub <i>and</i> its own spokes; the promotion and access rules below apply within each environment.</td></tr>
+    </tbody></table></div>
+    <div class="note">This topology realizes Milestone 1's <i>Workspace Structure</i>, <i>Domain Alignment</i>, <i>Lakehouse Standards</i>, and <i>Data Sharing</i> items; the Milestone 3 semantic models and reports are what live in the spokes.</div>
   </section>
 
   <!-- ============ SECURITY DEEP DIVE ============ -->

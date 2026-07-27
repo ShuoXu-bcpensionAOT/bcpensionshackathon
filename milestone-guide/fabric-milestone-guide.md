@@ -56,6 +56,10 @@ flowchart LR
 the **medallion** to reports — with **security and governance** applied across every layer. The
 items below are the pieces of this picture.*
 
+> The recommended **workspace shape** — a central **hub** that loads the data, with domain **spokes**
+> that shortcut to it — is set out in the **[Platform Topology — Hub & Spoke](#platform-topology--hub--spoke)**
+> section, along with the security model behind it.
+
 ### Establish Fabric Infrastructure Foundation
 
 *The physical footing: the compute we buy, the network path to our data, and the replication options.*
@@ -308,6 +312,99 @@ model**, with **security enforced end-to-end**. The items below govern each hop.
 | **Validate Workspace Strategy** | Confirming the workspace/app layout works for real authoring and consumption. | **Standard.** Validate the build-vs-consume workspace split with a real report and audience before rolling out broadly. |
 
 ---
+
+---
+
+## Platform Topology — Hub & Spoke
+
+*The recommended shape for the platform: **load data once into a central hub**, and let each business
+area work in its **own "spoke" workspace** that references the hub's data through **OneLake shortcuts**
+— no copies. This is Microsoft's enterprise pattern for Fabric (it's how domains and OneLake are meant
+to be used), and it fits BCPC well.*
+
+### The pattern
+
+```mermaid
+flowchart TB
+    SRC[(Enterprise sources)] --> B
+    subgraph HUB["Central HUB — Platform team (all ingestion + medallion)"]
+      direction LR
+      B[Bronze] --> S[Silver] --> G["Gold — certified data products"]
+    end
+    subgraph PEN["Spoke: Pensions"]
+      L1["Lakehouse + shortcuts"] --> W1["Warehouse (optional)"] --> M1["Semantic model + reports"]
+    end
+    subgraph EMP["Spoke: Employer"]
+      L2["Lakehouse + shortcuts"] --> M2["Semantic model + reports"]
+    end
+    subgraph MEM["Spoke: Member"]
+      L3["Lakehouse + shortcuts"] --> M3["Reports"]
+    end
+    G -. "OneLake shortcut — no copy" .-> L1
+    G -. shortcut .-> L2
+    G -. shortcut .-> L3
+```
+
+- **Hub** — a central workspace owned by the platform team. All ingestion and the medallion
+  (Bronze → Silver → **Gold certified data products**) live here. There is **one physical copy** of
+  the data. *This is exactly what our control plane produces.*
+- **Spokes** — a workspace per business area (domain), owned by that domain's team. Each has its **own
+  lakehouse** that **shortcuts** to the hub's Gold (a pointer, not a copy), plus its own **semantic
+  models and reports**, and — where it needs a T-SQL surface or extra marts — its own **Warehouse**.
+- **OneLake shortcuts** are references, not copies: the data stays in the hub, governed once, and every
+  spoke sees the same single source of truth.
+
+### Why this is the right design for BCPC
+
+1. **One copy, one truth.** Data is ingested once into the hub; spokes reference it. No copies to
+   reconcile, consistent numbers everywhere, lower storage.
+2. **Ownership that matches the org.** The platform team owns the hub (ingestion, medallion, certified
+   data); domain teams own their spokes (models, reports, marts). It makes the
+   **governance operating model physical**, and maps directly onto **Fabric domains**.
+3. **Self-service without a bottleneck.** Domains build freely in their own workspace, on governed and
+   certified data — the platform team isn't in the path of every report.
+4. **Security isolation (a crown-corp fit).** The hub is **write-locked** to the platform team; each
+   spoke gets **least-privilege** access to only the products it needs; **row/column security is
+   defined once at the hub** (OneLake Security) and enforced for every spoke consumer. Blast radius is
+   contained per workspace / capacity.
+5. **Governed consumption.** Spokes consume **certified** Gold data products, discovered through
+   domains / the OneLake catalog — the endorsement model applies.
+6. **Cost & capacity isolation.** Spokes run on **their own capacity**, so query cost is attributed to
+   the domain that incurs it (chargeback), and a heavy spoke can't starve ingestion.
+7. **Flexibility where it's needed.** A spoke needing a T-SQL surface or extra marts creates its **own
+   Warehouse** over the hub shortcuts — without polluting the hub or forking the Gold.
+8. **No rework for us.** Our control plane *is* the hub engine; its **Gold layer is the certified data
+   products** spokes shortcut to. Hub-and-spoke is the consumption topology on top of what we've built.
+
+### Hub vs Spoke — who owns what
+
+| Concern | Hub (Platform team) | Spoke (Domain team) |
+|---|---|---|
+| **Owns** | ingestion, Bronze / Silver, certified Gold | own lakehouse, warehouse, semantic models, reports |
+| **Writes data** | yes — only the platform service principal | no writes to the hub; writes only in its own workspace |
+| **Consumes** | — | shortcuts to hub Gold (no copy) |
+| **Security** | defines RLS / CLS / masking once (OneLake Security) | inherits hub security; sets report / item access |
+| **Capacity** | platform capacity | its own capacity (chargeback) |
+| **Governance** | certifies data products | consumes certified products; certifies its own reports/models |
+
+### Design considerations to get right
+
+*Honest trade-offs — the pattern is sound, but a few things must be designed deliberately for a
+security-sensitive shop.*
+
+| Consideration | What to do |
+|---|---|
+| **RLS through shortcuts** | Define row/column security at the **hub** using **OneLake Security** (storage-layer). Column security flows to consumers, and hub-side row security is enforced — but RLS propagation through cross-workspace shortcuts has **known gotchas** if done the older way, so **validate** that a spoke user sees only permitted rows/columns *before go-live*. |
+| **Shortcut, don't re-copy** | Standard: spokes **reference** hub Gold by shortcut and must not re-ingest or copy it — prevents drift and duplicate governance. |
+| **Data-product contracts** | Hub Gold schema changes ripple to spokes; treat Gold as **versioned contracts** with change notice to consumers. |
+| **Warehouses extend, not re-derive** | Spoke warehouses build marts **on top of** certified Gold; they should not re-implement the Gold transformations (avoids logic drift). |
+| **Direct Lake over shortcuts** | Semantic models can use **Direct Lake** on shortcuts to Delta Gold; validate there's no unexpected DirectQuery fallback for your cases. |
+| **Capacity planning** | Shortcut query compute is billed to the **consuming** spoke's capacity — good for chargeback, but size each spoke capacity for its workload. |
+| **Environment model still applies** | Each of **DEV / UAT / PROD** has its own hub *and* its own spokes; the promotion and access rules in the Security section apply within each environment. |
+
+> **How it maps to the milestones.** This topology realizes Milestone 1's *Define Workspace Structure*,
+> *Domain Alignment Strategy*, *Lakehouse Organization Standards*, and *Data Sharing Standards*; the
+> Milestone 3 semantic models and reports are what live in the spokes.
 
 ---
 
