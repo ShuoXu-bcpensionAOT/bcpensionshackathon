@@ -5,24 +5,24 @@
 <text x="610.0" y="55" font-size="11.5" font-weight="400" fill="#63707E" text-anchor="middle">Solid = in scope with Fabric + the control plane today.  Dashed = OPTIONAL Microsoft tools to layer on when a requirement calls for them.</text>
 <rect x="360" y="90" width="500" height="314" rx="16" fill="#E6F4EF" stroke="#0E7C5F" stroke-width="1.8"/>
 <text x="610" y="122" font-size="14.5" font-weight="750" fill="#0B6B52" text-anchor="middle">Microsoft Fabric + control plane — built in</text>
-<rect x="385" y="156" width="230" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
-<text x="500" y="180" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">OneLake Catalog</text>
-<text x="500" y="198" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">discover items across domains</text>
-<rect x="635" y="156" width="230" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
-<text x="750" y="180" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">Lineage view</text>
-<text x="750" y="198" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">source → Bronze → Silver → Gold</text>
-<rect x="385" y="230" width="230" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
-<text x="500" y="254" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">Endorsement</text>
-<text x="500" y="272" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">Promoted / Certified data products</text>
-<rect x="635" y="230" width="230" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
-<text x="750" y="254" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">Data quality + audit</text>
-<text x="750" y="272" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">config rules · run / DQ / drift tables</text>
-<rect x="385" y="304" width="230" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
-<text x="500" y="328" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">RLS / CLS / masking</text>
-<text x="500" y="346" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">OneLake data-level security</text>
-<rect x="635" y="304" width="230" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
-<text x="750" y="328" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">Sensitivity labels</text>
-<text x="750" y="346" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">Information Protection on items</text>
+<rect x="378" y="156" width="224" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
+<text x="490" y="180" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">OneLake Catalog</text>
+<text x="490" y="198" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">discover items across domains</text>
+<rect x="614" y="156" width="224" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
+<text x="726" y="180" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">Lineage view</text>
+<text x="726" y="198" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">source → Bronze → Silver → Gold</text>
+<rect x="378" y="230" width="224" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
+<text x="490" y="254" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">Endorsement</text>
+<text x="490" y="272" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">Promoted / Certified data products</text>
+<rect x="614" y="230" width="224" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
+<text x="726" y="254" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">Data quality + audit</text>
+<text x="726" y="272" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">config rules · run / DQ / drift tables</text>
+<rect x="378" y="304" width="224" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
+<text x="490" y="328" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">RLS / CLS / masking</text>
+<text x="490" y="346" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">OneLake data-level security</text>
+<rect x="614" y="304" width="224" height="60" rx="8" fill="#FFFFFF" stroke="#0E7C5F" stroke-width="1.1"/>
+<text x="726" y="328" font-size="12" font-weight="700" fill="#0B6B52" text-anchor="middle">Sensitivity labels</text>
+<text x="726" y="346" font-size="10" font-weight="400" fill="#33506e" text-anchor="middle">Information Protection on items</text>
 <rect x="60" y="120" width="280" height="200" rx="14" fill="#F3F1FB" stroke="#7A5AD1" stroke-width="1.5" stroke-dasharray="6 4"/><rect x="72" y="132" width="56" height="16" rx="8" fill="#7A5AD1"/><text x="100.0" y="144" font-size="9.5" font-weight="700" fill="#ffffff" text-anchor="middle">OPTIONAL</text><text x="200.0" y="170" font-size="13" font-weight="750" fill="#5B3FB0" text-anchor="middle">Microsoft Purview</text><text x="200.0" y="192" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">Unified Catalog + Data Map</text><text x="200.0" y="209" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">Business glossary at scale</text><text x="200.0" y="226" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">DLP policies for Fabric</text><text x="200.0" y="243" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">Information Protection labels</text><text x="200.0" y="260" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">Unified audit &amp; compliance</text><text x="200.0" y="277" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">— when governance spans beyond Fabric</text>
 <rect x="880" y="120" width="280" height="200" rx="14" fill="#F3F1FB" stroke="#7A5AD1" stroke-width="1.5" stroke-dasharray="6 4"/><rect x="892" y="132" width="56" height="16" rx="8" fill="#7A5AD1"/><text x="920.0" y="144" font-size="9.5" font-weight="700" fill="#ffffff" text-anchor="middle">OPTIONAL</text><g transform="translate(1108,130) scale(1.8889)"><defs><linearGradient id="aff60ddf-eec1-40bf-8bf5-f3e3b50e8818" x1="9" y1="16.21" x2="9" y2="0.62" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1b93eb" /><stop offset="0.21" stop-color="#2095eb" /><stop offset="0.44" stop-color="#2e9ced" /><stop offset="0.69" stop-color="#45a7ef" /><stop offset="0.95" stop-color="#64b6f1" /><stop offset="1" stop-color="#6bb9f2" /></linearGradient></defs><title>Icon-security-248</title><path d="M16,8.44c0,4.57-5.53,8.25-6.73,9a.43.43,0,0,1-.46,0C7.57,16.69,2,13,2,8.44V2.94a.44.44,0,0,1,.43-.44C6.77,2.39,5.78.5,9,.5s2.23,1.89,6.53,2a.44.44,0,0,1,.43.44Z" fill="#1b93eb" /><path d="M15.38,8.48c0,4.2-5.07,7.57-6.17,8.25a.4.4,0,0,1-.42,0c-1.1-.68-6.17-4.05-6.17-8.25v-5A.41.41,0,0,1,3,3c3.94-.11,3-1.83,6-1.83S11.05,2.93,15,3a.41.41,0,0,1,.39.4Z" fill="url(#aff60ddf-eec1-40bf-8bf5-f3e3b50e8818)" /><path d="M9,6.53A2.88,2.88,0,0,1,11.84,9a.49.49,0,0,0,.49.4h1.4a.49.49,0,0,0,.5-.53,5.26,5.26,0,0,0-10.46,0,.49.49,0,0,0,.5.53h1.4A.49.49,0,0,0,6.16,9,2.88,2.88,0,0,1,9,6.53Z" fill="#c3f1ff" /><circle cx="9" cy="9.4" r="1.91" fill="#fff" /></g><text x="1020.0" y="170" font-size="13" font-weight="750" fill="#5B3FB0" text-anchor="middle">Defender + Sentinel</text><text x="1020.0" y="192" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">Defender for Cloud posture</text><text x="1020.0" y="209" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">Microsoft Sentinel SIEM</text><text x="1020.0" y="226" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">Ship Fabric audit logs → SOC</text><text x="1020.0" y="243" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">Threat detection &amp; response</text><text x="1020.0" y="260" font-size="10" font-weight="400" fill="#4a4270" text-anchor="middle">— when a SOC / SIEM is required</text>
 <rect x="60" y="420" width="1100" height="150" rx="14" fill="#FFFFFF" stroke="#4B4FBE" stroke-width="1.4"/>
