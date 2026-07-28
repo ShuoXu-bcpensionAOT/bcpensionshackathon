@@ -1,0 +1,86 @@
+// Fabric ingestion decision tree — our Bronze framework vs Fabric mirroring (table by table).
+// Render:  dot -Tpng fabric_ingestion_decision_tree.dot -o fabric_ingestion_decision_tree.png
+//          dot -Tsvg fabric_ingestion_decision_tree.dot -o fabric_ingestion_decision_tree.svg
+digraph fabric_ingestion {
+  rankdir = TB;
+  graph [fontname="Segoe UI", bgcolor="white", nodesep=0.38, ranksep=0.55, splines=true,
+         label="Fabric ingestion decision tree — Bronze framework vs Fabric mirroring (per source table)\nGreen = our Bronze framework   Blue = Fabric mirroring   Amber = CDC / external ADLS",
+         labelloc="t", fontsize=13];
+  node [fontname="Segoe UI", fontsize=11];
+  edge [fontname="Segoe UI", fontsize=10, color="#55606E"];
+
+  start [shape=oval, style=filled, fillcolor="#2B3440", fontcolor="white", label="Source table"];
+
+  // ---- decision nodes (diamonds) ----
+  node [shape=diamond, style="filled", fillcolor="#EAF1FB", color="#0F6CBD", fontcolor="#12324f"];
+  q1  [label="Q1  Eligible for Fabric mirroring?\n(PK / unique index · supported datatypes ·\nname < 30 chars · <= 1000 tables)"];
+  q6  [label="Q6  Can mirroring prerequisites be accepted?\n(ARCHIVELOG · LogMiner · supplemental logging ·\ngateway · broad grants)"];
+  q2  [label="Q2  Data scientists need durable\nsource-level history or replay?"];
+  q3  [label="Q3  Near-real-time current state or\nautomatic delete handling valuable?"];
+  q7  [label="Q7  Formal source-consistent\ncutoff snapshot required?"];
+  q5  [label="Q5  Must every intermediate\ninsert / update / delete be retained?"];
+  q10 [label="Q10  Existing enterprise ADLS estate\nappropriate for archival history?"];
+  q9  [label="Q9  History queried often / need fast\npoint-in-time reconstruction?"];
+  q4  [label="Q4  Reliable watermark or\nappend-only key?"];
+  q5a [label="Q5  Must every intermediate\ninsert / update / delete be retained?"];
+  q8  [label="Q8  Large / expensive to full-scan?"];
+  q2a [label="Q2  Need durable source history\n(deletes, intermediate states)?"];
+
+  // ---- terminal recommendations (boxes) ----
+  node [shape=box, style="rounded,filled", fontcolor="#1f2733"];
+  // our Bronze framework = green
+  t_custom [label="Regular custom Bronze\n(our framework)", fillcolor="#E3F4EE", color="#0E7C5F"];
+  t_wm     [label="Watermark incremental\nBronze", fillcolor="#E3F4EE", color="#0E7C5F"];
+  t_over   [label="Full-overwrite Bronze\n(current-state)", fillcolor="#E3F4EE", color="#0E7C5F"];
+  t_snap   [label="Append-only full-snapshot\nBronze", fillcolor="#E3F4EE", color="#0E7C5F"];
+  // Fabric mirroring = blue
+  t_mirror  [label="Core mirror only", fillcolor="#E1ECF9", color="#0F6CBD"];
+  t_mirsnap [label="Core mirror +\nscheduled snapshots", fillcolor="#E1ECF9", color="#0F6CBD"];
+  t_cdf     [label="Mirror + CDF +\npersisted Bronze history", fillcolor="#E1ECF9", color="#0F6CBD"];
+  t_cdfchk  [label="Mirror + CDF +\nperiodic checkpoints", fillcolor="#E1ECF9", color="#0F6CBD"];
+  // CDC / external = amber
+  t_cdc  [label="Source or\nthird-party CDC", fillcolor="#FBF1D6", color="#B8860B"];
+  t_adls [label="External ADLS archive\n+ OneLake shortcut", fillcolor="#FBF1D6", color="#B8860B"];
+
+  // ---- edges ----
+  start -> q1;
+
+  q1 -> q6 [label="Yes"];
+  q1 -> q4 [label="No"];
+
+  q6 -> q2       [label="Yes"];
+  q6 -> t_custom [label="No"];
+
+  q2 -> q5 [label="Yes"];
+  q2 -> q3 [label="No"];
+
+  q3 -> q7     [label="Yes"];
+  q3 -> t_over [label="No"];
+
+  q7 -> t_mirsnap [label="Yes"];
+  q7 -> t_mirror  [label="No"];
+
+  q5 -> q10       [label="Yes"];
+  q5 -> t_mirsnap [label="No"];
+
+  q10 -> t_adls [label="Yes"];
+  q10 -> q9     [label="No"];
+
+  q9 -> t_cdfchk [label="Yes"];
+  q9 -> t_cdf    [label="No"];
+
+  // No(Q1): not mirror-eligible -> our Bronze framework
+  q4 -> q5a [label="Yes"];
+  q4 -> q8  [label="No"];
+
+  q5a -> t_cdc [label="Yes"];
+  q5a -> t_wm  [label="No"];
+
+  q8 -> t_cdc [label="Yes"];
+  q8 -> q2a   [label="No"];
+
+  q2a -> t_snap [label="Yes"];
+  q2a -> t_over [label="No"];
+
+  { rank=same; t_custom; }
+}
