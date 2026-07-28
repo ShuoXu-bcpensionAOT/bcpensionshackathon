@@ -1366,6 +1366,8 @@ def gold_merge(stage_df, gold_type, gold_table, keys, run_id):
         raise Exception(f"no gold strategy registered for '{gold_type}' (table {gold_table})")
     stage = (stage_df.withColumn("_gold_run_id", F.lit(run_id))
                      .withColumn("_gold_updated_at", F.current_timestamp()))
+    if keys:                                              # a merge must never see duplicate source
+        stage = stage.dropDuplicates(keys)               # keys (Delta rejects it) — as silver does
     path = tpath("gold", gold_table)
     fn(path, stage, keys)
     return read_path(path).count()

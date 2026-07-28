@@ -7,7 +7,11 @@ config_lh = "LH_metadata"
 # Stage for voc_fact_survey_answer — the atomic grain: one answer per question, unpivoted from the
 # four wide surveys (question columns = business columns minus each survey's metadata). answer_key
 # = sha2(response_key|question_code); question_key = sha2(survey_key|question_code). fact.
-from pyspark.sql import functions as F
+#
+# The transform is written as SparkSQL: a single `sqltext` string is assembled, run with spark.sql,
+# then written. Only the per-survey column lists are computed in Python — the set of question columns
+# and their ORIGINAL headers ('A2:2', 'B1-1') vary per survey and come from the global column_map, so
+# the SELECT/stack() has to be generated. Everything downstream of `long` is plain SQL.
 
 SURVEYS = [
     {"t": "2026_2027_q1_employer_survey_worksheet", "k": 1, "rid": "respondent_id",
@@ -28,6 +32,7 @@ SURVEYS = [
               "online", "special_event"]},
 ]
 
+
 def _colmap(table):
     """physical -> ORIGINAL business header (e.g. 'a2_2' -> 'A2:2'), from the global column_map.
     Only CHANGED columns are stored, so unlisted columns keep their name."""
@@ -38,25 +43,40 @@ def _colmap(table):
     except Exception:
         return {}
 
-long = None
-for s in SURVEYS:
-    df = spark.sql(f"SELECT * FROM `{silver_lh}`.voc.`{s['t']}`")
-    qcols = [c for c in df.columns if not c.startswith("_") and c not in s["meta"]]
-    df = df.withColumn("_rk", F.sha2(F.concat_ws("|", F.lit(str(s["k"])), F.col(s["rid"]).cast("string")), 256))
-    cm = _colmap(s["t"])                                   # restore ':' '-' business headers on unpivot
+
+def _unpivot_sql(s):
+    """One survey's wide->long unpivot as a SparkSQL SELECT. stack() emits (question_code, answer_text)
+    per question column, and _colmap restores each column's ':'/'-' business header as the code."""
+    cols = spark.sql(f"SELECT * FROM `{silver_lh}`.voc.`{s['t']}` LIMIT 0").columns
+    qcols = [c for c in cols if not c.startswith("_") and c not in s["meta"]]
+    cm = _colmap(s["t"])
     pairs = ", ".join(f"'{cm.get(c, c)}', `{c}`" for c in qcols)
-    u = df.selectExpr(f"{s['k']} AS survey_key", "_rk AS response_key",
-                      f"stack({len(qcols)}, {pairs}) AS (question_code, answer_text)").where("answer_text IS NOT NULL")
-    long = u if long is None else long.unionByName(u)
+    return f"""
+    SELECT {s['k']} AS survey_key,
+           sha2(concat_ws('|', '{s['k']}', cast(`{s['rid']}` AS string)), 256) AS response_key,
+           stack({len(qcols)}, {pairs}) AS (question_code, answer_text)
+    FROM `{silver_lh}`.voc.`{s['t']}`"""
 
-_NUM = r"^-?[0-9]+([.][0-9]+)?$"
-stage = long.select(
-    F.sha2(F.concat_ws("|", F.col("response_key"), F.col("question_code")), 256).alias("answer_key"),
-    F.col("response_key"), F.col("survey_key"), F.col("question_code"),
-    F.sha2(F.concat_ws("|", F.col("survey_key").cast("string"), F.col("question_code")), 256).alias("question_key"),
-    F.col("answer_text"),
-    F.when(F.col("answer_text").rlike(_NUM), F.col("answer_text").cast("double")).alias("answer_numeric"),
-    F.when(F.length("answer_text") > 25, True).otherwise(False).alias("is_freetext"))
 
+union_sql = "\n    UNION ALL".join(_unpivot_sql(s) for s in SURVEYS)
+
+sqltext = f"""
+WITH long AS ({union_sql}
+)
+SELECT
+    sha2(concat_ws('|', response_key, question_code), 256)               AS answer_key,
+    response_key,
+    survey_key,
+    question_code,
+    sha2(concat_ws('|', cast(survey_key AS string), question_code), 256) AS question_key,
+    answer_text,
+    CASE WHEN answer_text RLIKE '^-?[0-9]+([.][0-9]+)?$'
+         THEN cast(answer_text AS double) END                           AS answer_numeric,
+    CASE WHEN length(answer_text) > 25 THEN true ELSE false END          AS is_freetext
+FROM long
+WHERE answer_text IS NOT NULL
+"""
+
+stage = spark.sql(sqltext)
 spark.sql("CREATE SCHEMA IF NOT EXISTS stage")
 stage.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable("stage.voc_fact_survey_answer")
