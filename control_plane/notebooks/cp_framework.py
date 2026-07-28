@@ -102,6 +102,27 @@ def _norm_ident(s):
     return re.sub(r"_+", "_", re.sub(r"[^0-9A-Za-z]+", "_", str(s or "").strip().lower())).strip("_")
 
 
+def unique_names(names):
+    """Make identifier names unique in a stable, ORDER-PRESERVING way: the first occurrence keeps
+    its name, later duplicates get _2, _3, ... (avoiding clashes with existing names). Used so two
+    source headers that sanitize/snake to the same physical name (e.g. 'A2:2' and 'A2-2' -> 'a2_2')
+    don't collide into a duplicate column (which Delta rejects on write) — each still gets a distinct
+    physical name, and column_map keeps each one's true original."""
+    seen, out = set(), []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+        else:
+            i = 2
+            while f"{n}_{i}" in seen:
+                i += 1
+            u = f"{n}_{i}"
+            seen.add(u)
+            out.append(u)
+    return out
+
+
 def landed_table(o):
     """The landed (schema, table) for a source object on a SCHEMA-ENABLED lakehouse:
         schema = datasource (source_name)
@@ -959,15 +980,17 @@ def file_source(o, user, password):
 
     pdf = pdf.dropna(axis=1, how="all")                      # drop fully-empty columns
     originals = [str(c) for c in pdf.columns]                # true headers (may contain ':' '-' etc.)
-    sanitized = [re.sub(r"[^A-Za-z0-9_]", "_", c).strip("_") or f"col{i}"
-                 for i, c in enumerate(originals)]
+    raw = [re.sub(r"[^A-Za-z0-9_]", "_", c).strip("_") or f"col{i}" for i, c in enumerate(originals)]
+    sanitized = unique_names(raw)                            # unique bronze names (no duplicate cols)
+    physical = unique_names([snake(s) for s in sanitized])   # final silver names, unique + stable
     pdf.columns = sanitized
-    # Record the original header for every column whose LANDED (silver) name differs from it, so a
-    # later unpivot can restore the real business value. Predict the final physical name = snake() of
-    # the connector-sanitized name (the same transform silver applies). Only changed columns stored.
     sch, tbl = landed_table(o)
-    record_column_map(o.get("object_id"), sch, tbl,
-                      [(snake(s), orig) for s, orig in zip(sanitized, originals)])
+    if len(set(raw)) != len(raw) or len(set(snake(s) for s in sanitized)) != len(sanitized):
+        print(f"file connector [{sch}.{tbl}]: header collision de-duplicated "
+              f"(physical names suffixed _2/_3; true originals preserved in column_map)")
+    # Record the original header for every column whose LANDED (silver) physical name differs, so a
+    # later unpivot can restore the real business value (incl. ':' '-'). Only changed columns stored.
+    record_column_map(o.get("object_id"), sch, tbl, list(zip(physical, originals)))
     pdf = pdf.where(pd.notnull(pdf), None)
     if pdf.empty:
         schema = ", ".join(f"`{c}` string" for c in pdf.columns) or "_empty string"
@@ -1539,13 +1562,18 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
         df = read_path(bp)
         ingest_ts = df["_bronze_ingest_ts"] if "_bronze_ingest_ts" in df.columns else F.current_timestamp()
         biz = [c for c in df.columns if not c.startswith("_")]
-        # Global column dictionary: for non-file sources, record source->landed (snake) renames so
-        # the original names are recoverable (only changed columns). File/dropbox objects are skipped
-        # here — the file connector already recorded their TRUE headers (incl. ':' '-'), which silver
-        # must not overwrite with the already-sanitized bronze name.
+        snaked = [snake(c) for c in biz]
+        phys = unique_names(snaked)                          # unique landed names — two source cols
+        if len(set(snaked)) != len(snaked):                  # that snake to the same name get _2/_3
+            print(f"silver [{schema}.{table}]: column-name collision de-duplicated "
+                  f"(physical names suffixed _2/_3; true originals preserved in column_map)")
+        # Global column dictionary: for non-file sources, record source->landed renames so the
+        # originals are recoverable (only changed columns). File/dropbox objects are skipped here —
+        # the file connector already recorded their TRUE headers (incl. ':' '-'), predicting these
+        # exact physical names, so silver must not overwrite with the sanitized bronze name.
         if str(o.get("connector") or o.get("source_type") or "").lower() != "file":
-            record_column_map(oid, schema, table, [(snake(c), c) for c in biz])
-        sdf = df.select([F.col(c).alias(snake(c)) for c in biz] + [ingest_ts.alias("_bronze_ingest_ts")])
+            record_column_map(oid, schema, table, list(zip(phys, biz)))
+        sdf = df.select([F.col(c).alias(p) for c, p in zip(biz, phys)] + [ingest_ts.alias("_bronze_ingest_ts")])
         if "rowguid" in sdf.columns:
             sdf = sdf.drop("rowguid")
         # bronze is append-only (every load retained for audit) — isolate the LATEST snapshot.

@@ -18,6 +18,27 @@ def _norm_ident(s):
     return re.sub(r"_+", "_", re.sub(r"[^0-9A-Za-z]+", "_", str(s or "").strip().lower())).strip("_")
 
 
+def unique_names(names):
+    """Make identifier names unique in a stable, ORDER-PRESERVING way: the first occurrence keeps
+    its name, later duplicates get _2, _3, ... (avoiding clashes with existing names). Used so two
+    source headers that sanitize/snake to the same physical name (e.g. 'A2:2' and 'A2-2' -> 'a2_2')
+    don't collide into a duplicate column (which Delta rejects on write) — each still gets a distinct
+    physical name, and column_map keeps each one's true original."""
+    seen, out = set(), []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+        else:
+            i = 2
+            while f"{n}_{i}" in seen:
+                i += 1
+            u = f"{n}_{i}"
+            seen.add(u)
+            out.append(u)
+    return out
+
+
 def landed_table(o):
     """The landed (schema, table) for a source object on a SCHEMA-ENABLED lakehouse:
         schema = datasource (source_name)

@@ -11,7 +11,7 @@ import re
 import tempfile
 
 from ..runtime import spark, notebookutils
-from ..naming import _norm_ident, snake, landed_table
+from ..naming import _norm_ident, snake, landed_table, unique_names
 from ..audit import record_column_map
 from . import ingest_connector
 from .base import _opts, _ensure_pkg
@@ -49,15 +49,17 @@ def file_source(o, user, password):
 
     pdf = pdf.dropna(axis=1, how="all")                      # drop fully-empty columns
     originals = [str(c) for c in pdf.columns]                # true headers (may contain ':' '-' etc.)
-    sanitized = [re.sub(r"[^A-Za-z0-9_]", "_", c).strip("_") or f"col{i}"
-                 for i, c in enumerate(originals)]
+    raw = [re.sub(r"[^A-Za-z0-9_]", "_", c).strip("_") or f"col{i}" for i, c in enumerate(originals)]
+    sanitized = unique_names(raw)                            # unique bronze names (no duplicate cols)
+    physical = unique_names([snake(s) for s in sanitized])   # final silver names, unique + stable
     pdf.columns = sanitized
-    # Record the original header for every column whose LANDED (silver) name differs from it, so a
-    # later unpivot can restore the real business value. Predict the final physical name = snake() of
-    # the connector-sanitized name (the same transform silver applies). Only changed columns stored.
     sch, tbl = landed_table(o)
-    record_column_map(o.get("object_id"), sch, tbl,
-                      [(snake(s), orig) for s, orig in zip(sanitized, originals)])
+    if len(set(raw)) != len(raw) or len(set(snake(s) for s in sanitized)) != len(sanitized):
+        print(f"file connector [{sch}.{tbl}]: header collision de-duplicated "
+              f"(physical names suffixed _2/_3; true originals preserved in column_map)")
+    # Record the original header for every column whose LANDED (silver) physical name differs, so a
+    # later unpivot can restore the real business value (incl. ':' '-'). Only changed columns stored.
+    record_column_map(o.get("object_id"), sch, tbl, list(zip(physical, originals)))
     pdf = pdf.where(pd.notnull(pdf), None)
     if pdf.empty:
         schema = ", ".join(f"`{c}` string" for c in pdf.columns) or "_empty string"

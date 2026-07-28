@@ -5,7 +5,7 @@ import traceback
 
 from pyspark.sql import functions as F, Window
 
-from ..naming import landed_table, snake, now_ts
+from ..naming import landed_table, snake, now_ts, unique_names
 from ..runtime import tpath, QUAR_LH
 from ..storage import delta_exists, read_path, write_path, files_put
 from ..config_db import config_query
@@ -62,13 +62,18 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
         df = read_path(bp)
         ingest_ts = df["_bronze_ingest_ts"] if "_bronze_ingest_ts" in df.columns else F.current_timestamp()
         biz = [c for c in df.columns if not c.startswith("_")]
-        # Global column dictionary: for non-file sources, record source->landed (snake) renames so
-        # the original names are recoverable (only changed columns). File/dropbox objects are skipped
-        # here — the file connector already recorded their TRUE headers (incl. ':' '-'), which silver
-        # must not overwrite with the already-sanitized bronze name.
+        snaked = [snake(c) for c in biz]
+        phys = unique_names(snaked)                          # unique landed names — two source cols
+        if len(set(snaked)) != len(snaked):                  # that snake to the same name get _2/_3
+            print(f"silver [{schema}.{table}]: column-name collision de-duplicated "
+                  f"(physical names suffixed _2/_3; true originals preserved in column_map)")
+        # Global column dictionary: for non-file sources, record source->landed renames so the
+        # originals are recoverable (only changed columns). File/dropbox objects are skipped here —
+        # the file connector already recorded their TRUE headers (incl. ':' '-'), predicting these
+        # exact physical names, so silver must not overwrite with the sanitized bronze name.
         if str(o.get("connector") or o.get("source_type") or "").lower() != "file":
-            record_column_map(oid, schema, table, [(snake(c), c) for c in biz])
-        sdf = df.select([F.col(c).alias(snake(c)) for c in biz] + [ingest_ts.alias("_bronze_ingest_ts")])
+            record_column_map(oid, schema, table, list(zip(phys, biz)))
+        sdf = df.select([F.col(c).alias(p) for c, p in zip(biz, phys)] + [ingest_ts.alias("_bronze_ingest_ts")])
         if "rowguid" in sdf.columns:
             sdf = sdf.drop("rowguid")
         # bronze is append-only (every load retained for audit) — isolate the LATEST snapshot.
