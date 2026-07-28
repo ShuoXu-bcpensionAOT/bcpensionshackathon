@@ -20,14 +20,16 @@ Use **both**, each for its correct role — they are complementary, not competin
   and it works with **Fabric pipelines, Copy Job, Dataflow Gen2, Fabric Mirroring, and Power BI**. Prefer
   it whenever the source can be reached privately through an Azure VNet.
 - **On-premises data gateway (OPDG)** = the **self-hosted** path for **on-premises / private sources with
-  no VNet route**, and — critically for BCPC — the **only supported gateway for Oracle mirroring**.
+  no VNet route**, and the gateway for **mirroring private/on-prem sources** (SQL Server, Snowflake, Azure
+  SQL, Google BigQuery) — and, critically for BCPC, the **only supported gateway for Oracle mirroring**.
 
 **For BCPC:** reuse the **existing VNet data gateway** for Azure/private-endpoint sources and pipeline
 ingestion; stand up a **dedicated, HA on-premises data gateway** specifically for **Oracle (OCI / on-prem)
 mirroring** and any other on-prem sources. Keep everything on **private connectivity, no public internet**.
 
-> **One-line rule.** *If the source is reachable privately through an Azure VNet → VNet data gateway.
-> If it's on-prem/private with no VNet path, or it's Oracle mirroring → on-premises data gateway.*
+> **One-line rule.** *If the source is reachable privately through an Azure VNet → VNet data gateway. If
+> it's on-prem/private with no VNet path, or it's Oracle mirroring (OPDG-only) → on-premises data gateway.
+> Mirroring any other private source (SQL Server, Snowflake, Azure SQL) works through **either** gateway.*
 
 ---
 
@@ -64,10 +66,33 @@ mirroring** and any other on-prem sources. Keep everything on **private connecti
   **1,000 data sources** per cluster. You install, configure, and patch it (Microsoft supports the **last
   six monthly releases**).
 
-**The Oracle nuance (important):** although the VNet gateway supports "Fabric Mirroring" in general,
-**Oracle mirroring specifically requires the on-premises data gateway** — "We currently support Mirroring
-for Oracle for **On-Premises Data Gateway (OPDG)** … version **3000.282.5** or greater." So for BCPC's
-Oracle estate (OCI / on-prem), the OPDG is mandatory.
+**The mirroring nuance (important):** a gateway isn't an Oracle-only concern. **Any mirroring source that
+sits behind a firewall / on a private network needs a gateway** — what differs is *which* gateway each
+source accepts. Oracle is the strict case (**on-premises gateway only**); several other sources accept
+**either** gateway; a couple are **VNet-gateway** oriented. This is set out in §2.1.
+
+### 2.1 Mirroring — which sources need which gateway (verified 2026-07-28)
+
+Every row is from the source's official Microsoft Learn mirroring page (see *References*). "Publicly
+reachable" sources need **no gateway**; the table is about the **private / behind-a-firewall** case.
+
+| Mirroring source | Gateway needed when private? | On-prem gateway | VNet gateway | Notes |
+|---|---|:--:|:--:|---|
+| **Oracle** (on-prem VM, Azure VM, OCI, Database@Azure, Exadata) | **Always** (listed prerequisite) | **✅ required** | ❌ | OPDG is mandatory regardless; VNet gateway is **not** an option. Needs LogMiner + ARCHIVELOG + supplemental logging; OPDG **3000.282.5+**. |
+| **SQL Server** (2016–2025; on-prem, Azure VM, other clouds) | Yes, behind firewall | ✅ | ✅ | *"Set up an on-premises data gateway or virtual network data gateway to mirror the data."* SQL 2025 needs Azure Arc. |
+| **Snowflake** | Yes, private network | ✅ | ✅ | Direct Private Link to Fabric **not yet supported** — *"use a virtual network data gateway or on-premises data gateway for private connectivity."* |
+| **Azure SQL Database** | Yes, when not public | ✅ | ✅ | *"virtual network data gateway or on-premises data gateway."* |
+| **Azure SQL Managed Instance** | Yes, when not public | ✅ | ✅ | Same posture as Azure SQL DB. |
+| **Azure DB for PostgreSQL** (flex) | Yes, when not public | — | ✅ | Page names the **VNet data gateway** for private/VNet-isolated servers. |
+| **Google BigQuery** (preview) | — | ✅ | — | Mirroring supports the **on-premises data gateway**. |
+| Cosmos DB · Databricks (metadata) · Azure DB for MySQL (preview) · Fabric SQL DB · SAP Datasphere · SharePoint List · Dremio (metadata) · Open mirroring | No gateway | — | — | Native cloud / metadata-shortcut / push-based — no gateway in the replication path. |
+
+**Reading the table for BCPC.** Oracle (OCI / on-prem) is the one source that **forces** the on-premises
+data gateway. If BCPC later mirrors an **on-prem SQL Server**, it can go through **either** gateway — reuse
+the same hardened OPDG cluster, or the VNet gateway if the instance is VNet-reachable. Azure PaaS sources
+(Azure SQL DB/MI, PostgreSQL) lean to the **VNet gateway** over a private endpoint. So the OPDG is not a
+single-purpose Oracle appliance — it's the **private-source mirroring** gateway, with Oracle as its one
+non-negotiable tenant.
 
 ---
 
@@ -82,6 +107,7 @@ Oracle estate (OCI / on-prem), the OPDG is mandatory.
 | Reaches | Azure/cloud sources via **private endpoint / VNet** (or public) | **On-prem & private** sources; VNet resources if on an Azure VM |
 | Private connectivity | **Private endpoints / Private Link** — no public exposure | Outbound-only; private via your own network (ExpressRoute/VPN) |
 | Fabric workloads | Dataflow Gen2, pipelines, Copy Job, **Mirroring**, Power BI | Data Factory (pipelines), **Mirroring**, Power BI, Logic Apps, AAS |
+| **Mirroring — private sources** | SQL Server / Snowflake / Azure SQL / PostgreSQL (either or VNet) | SQL Server / Snowflake / Azure SQL / BigQuery (either or on-prem) |
 | **Oracle mirroring** | **Not supported** for Oracle | **Required** (OPDG 3000.282.5+) |
 | High availability | Managed by Microsoft | **You cluster** the gateway VMs |
 | SKU requirement | P / F / A4+; **F8+ recommended** | Any (a gateway licence/VM) |
@@ -93,6 +119,8 @@ Oracle estate (OCI / on-prem), the OPDG is mandatory.
 
 1. Source is **Oracle** (OCI/on-prem) and you want **mirroring** → **on-premises data gateway** (mandatory).
 2. Source is **on-prem / private with no VNet route** → **on-premises data gateway**.
+2a. You want to **mirror another private source** (SQL Server, Snowflake, Azure SQL/MI) behind a firewall →
+   **either gateway** — pick VNet if it's VNet-reachable, else the on-prem gateway (§2.1).
 3. Source is **Azure PaaS / cloud reachable via private endpoint or the VNet** → **VNet data gateway**.
 4. You want the **lowest operational overhead** (no VM to run/patch/HA) and the source qualifies → **VNet
    data gateway**.
@@ -138,9 +166,10 @@ Principles, mapped to the design above:
 - **VNet data gateway** (managed, injected into a **hardened delegated subnet**) for **Azure / private-
   endpoint sources** and Fabric **pipelines / Copy / Dataflow Gen2** — least operational surface, compute
   isolation from cross-tenant attacks.
-- **On-premises data gateway** on **dedicated, hardened, HA-clustered VM(s)** in a secured subnet, used
-  **only** for **Oracle mirroring** and on-prem sources. Outbound-only (no inbound ports). Dedicate the VMs
-  to the gateway; patch monthly.
+- **On-premises data gateway** on **dedicated, hardened, HA-clustered VM(s)** in a secured subnet, used for
+  **private-source mirroring** — **Oracle (mandatory / OPDG-only)** plus any **on-prem SQL Server** or other
+  private source that can't reach the VNet gateway. Outbound-only (no inbound ports). Dedicate the VMs to
+  the gateway; patch monthly.
 - **Credentials in Key Vault** — least-privilege, **read-only** source accounts; secrets never in config or
   git.
 - **Identity & access** — grant via **Entra security groups**; enforce **Conditional Access** (MFA +
@@ -180,7 +209,10 @@ An earlier note stated the VNet gateway "can't serve mirroring." That is **corre
 (OPDG-only) but **too broad in general**: per current Microsoft docs, the **VNet data gateway does support
 Fabric Mirroring** for VNet-reachable sources (e.g. Azure SQL via a private endpoint). The precise position:
 
-- **Oracle mirroring → on-premises data gateway only.**
+- **Oracle mirroring → on-premises data gateway only** (no VNet-gateway option).
+- **Mirroring of other private sources** (SQL Server, Snowflake, Azure SQL DB/MI) → **either** the VNet or
+  the on-premises data gateway; **PostgreSQL** → VNet data gateway; **Google BigQuery** (preview) →
+  on-premises data gateway. See the verified matrix in **§2.1**.
 - **Mirroring of Azure / VNet-reachable sources → VNet data gateway is supported** (or native cloud
   mirroring with no gateway for public paths).
 
@@ -192,8 +224,13 @@ Fabric Mirroring** for VNet-reachable sources (e.g. Azure SQL via a private endp
 - What is an on-premises data gateway: https://learn.microsoft.com/en-us/data-integration/gateway/service-gateway-onprem
 - On-premises data gateway architecture (outbound-only, HA): https://learn.microsoft.com/en-us/data-integration/gateway/service-gateway-onprem-indepth
 - Access on-premises data in Data Factory for Fabric: https://learn.microsoft.com/en-us/fabric/data-factory/how-to-access-on-premises-data
-- Mirroring overview: https://learn.microsoft.com/en-us/fabric/mirroring/overview
-- Oracle mirroring limitations (OPDG requirement): https://learn.microsoft.com/en-us/fabric/mirroring/oracle-limitations
+- Mirroring overview (source list): https://learn.microsoft.com/en-us/fabric/mirroring/overview
+- Oracle mirroring (OPDG prerequisite): https://learn.microsoft.com/en-us/fabric/mirroring/oracle
+- Oracle mirroring limitations (OPDG version): https://learn.microsoft.com/en-us/fabric/mirroring/oracle-limitations
+- SQL Server mirroring behind firewall (on-prem **or** VNet gateway): https://learn.microsoft.com/en-us/fabric/mirroring/sql-server
+- Snowflake mirroring behind firewall (on-prem **or** VNet gateway): https://learn.microsoft.com/en-us/fabric/mirroring/snowflake
+- Azure SQL Database mirroring behind firewall (on-prem **or** VNet gateway): https://learn.microsoft.com/en-us/fabric/mirroring/azure-sql-database
+- Azure DB for PostgreSQL mirroring network requirements (VNet gateway): https://learn.microsoft.com/en-us/fabric/mirroring/azure-database-postgresql
 - Azure architecture icons (official; used in the diagrams): https://learn.microsoft.com/en-us/azure/architecture/icons/
 
 ## 9. Verification notes
@@ -208,6 +245,15 @@ Fabric Mirroring** for VNet-reachable sources (e.g. Azure SQL via a private endp
   Fabric / ADF / Power BI / Logic Apps / AAS / Power Platform**, has **standard & personal** modes and
   **HA clustering**, can run on an Azure VM, 1,000 data-source limit per cluster. [data-integration/gateway/service-gateway-onprem, updated 2026-01-16]
 - **Oracle mirroring requires the OPDG** (version 3000.282.5+). [mirroring/oracle-limitations]
+- **Mirroring gateway matrix (§2.1) verified per source:** Oracle → OPDG only [mirroring/oracle,
+  updated 2026-05-21]; **SQL Server** (2016–2025, incl. on-prem/Azure VM/other cloud) → *"on-premises
+  data gateway or virtual network data gateway"* [mirroring/sql-server, updated 2026-07-06]; **Snowflake**
+  → *"virtual network data gateway or on-premises data gateway"* (Private Link not yet supported)
+  [mirroring/snowflake, updated 2026-07-06]; **Azure SQL Database** → *"virtual network data gateway or
+  on-premises data gateway"* [mirroring/azure-sql-database, updated 2026-07-06]; **Azure DB for PostgreSQL**
+  → VNet data gateway [mirroring/azure-database-postgresql, updated 2026-05-21]; **Google BigQuery**
+  (preview) → on-premises data gateway [Fabric Mirroring new-sources announcement]. Cosmos DB, Databricks
+  (metadata), MySQL (preview), Fabric SQL DB, SAP, SharePoint List, Dremio, Open mirroring need no gateway.
 
 **Diagram provenance.** Both diagrams are self-contained SVGs that **inline the official Azure
 architecture icons** (Virtual Networks, On-premises Data Gateways, Key Vaults, ExpressRoute Circuits,
