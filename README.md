@@ -15,6 +15,7 @@ Pipelines over param-driven Spark notebooks.
 | **[`control_plane/docs/GOVERNANCE_SECURITY.md`](control_plane/docs/GOVERNANCE_SECURITY.md)** | Governance & security: what we've implemented, the full Lakehouse surface, and what a Warehouse adds. |
 | **[`control_plane/docs/DESIGN.md`](control_plane/docs/DESIGN.md)** | Engine internals: the modular `src/cp/` package, how to add a connector, the bundler, the wheel. |
 | **[`control_plane/docs/BRONZE_VS_MIRRORING.md`](control_plane/docs/BRONZE_VS_MIRRORING.md)** | Our bronze ingestion vs Fabric Mirroring (e.g. on-prem Oracle): pros/cons + recommendation. |
+| **[`control_plane/docs/fabric_ingestion_decision_guide.md`](control_plane/docs/fabric_ingestion_decision_guide.md)** | Table-by-table: Bronze framework vs Fabric mirroring — rendered decision tree, comparison matrices, cost model + worked example, Oracle limits. Interactive [`.xlsx` calculator](control_plane/docs/fabric_ingestion_decision_calculator.xlsx) alongside. |
 | **[`control_plane/docs/CICD.md`](control_plane/docs/CICD.md)** | CI/CD (GitHub Actions + Azure DevOps), service-principal auth, Key Vault. |
 | **[`control_plane/SOLUTION.md`](control_plane/SOLUTION.md)** | Packaged-solution summary + roadmap. |
 
