@@ -570,6 +570,21 @@ In the `metadata` lakehouse (Delta), written by the framework:
 | `dq_result` | per rule: passed/failed counts, PASS/FAIL |
 | `quarantine_<target>` | (silver lakehouse) rows that failed an error-severity DQ rule |
 | `pipeline_run_log` | pipeline failures (pipeline, activity, error message) |
+| `column_map` | global column dictionary — `(object_id, landed_schema, landed_table, physical_col, original_col)` for every column whose **landed name changed** from its source/business name (only changed columns, to save storage). Lets a later step (e.g. a gold **unpivot**) restore the true header, incl. `:` `-` from file drops |
+| `dropbox_ledger` | processed file drops (file key + content hash) for idempotent intake |
+
+**Column dictionary (`column_map`) & name collisions.** Landing sanitizes column names to be
+Spark/Delta-safe: file headers drop `:`, `-`, spaces, etc. (`A2:2` → `A2_2`), and silver snake-cases
+everything (`SalesOrderID` → `sales_order_id`). Because the *original* header can itself be a business
+value you later **unpivot** into a row, the framework records it in **`column_map`** — but **only for
+columns whose landed name actually changed** (a column landed as-is stores nothing). Two writers keep
+one row per changed column: the **`file` connector** records file headers (incl. `:` `-`, predicting the
+final snake name), and the **silver worker** records `source → snake` renames for every non-file source
+(JDBC, HTTP, …). A gold source-query notebook restores the true header by looking up `column_map`
+(e.g. `stack('A2:2', a2_2, …)` instead of `'a2_2'`). *Collision handling:* if two headers reduce to the
+same physical name (`A2:2` and `A2-2` → `a2_2`), a stable order-preserving de-dup suffixes the later one
+(`a2_2`, `a2_2_2`) so both columns survive (Delta rejects duplicate columns) and `column_map` keeps each
+one's original — a warning is logged when this happens.
 
 Control columns on data tables: bronze `_run_id, _source_system, _source_table,
 _bronze_ingest_ts`; silver `_row_hash, _silver_run_id, _silver_updated_at`; gold

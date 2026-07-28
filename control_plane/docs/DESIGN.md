@@ -46,13 +46,13 @@ control_plane/
   src/cp/                      # THE ENGINE (source of truth; edit here)
     __init__.py                #   minimal — keeps pure modules importable off-cluster
     runtime.py                 #   spark, notebookutils, cp_vars, lakehouse GUIDs, WS id, config-DB id, tpath
-    naming.py                  #   snake, _norm_ident, now_ts, landed_table          (pure — unit-tested)
+    naming.py                  #   snake, _norm_ident, unique_names, now_ts, landed_table  (pure — unit-tested)
     dag.py                     #   topo_levels                                        (pure — unit-tested)
     storage.py                 #   delta_exists, read/write_path, read_config, files_put
     secrets.py                 #   get_secret (Key Vault)
     config_db.py               #   config_conn/query/exec/exec_many (pyodbc + AAD)
     transform.py               #   business_cols, row_hash, merge_upsert
-    audit.py                   #   run/object logging, watermarks, seed_control_tables, SCHEMAS
+    audit.py                   #   run/object logging, watermarks, seed_control_tables, SCHEMAS, column_map
     gold/                      #   GOLD TABLE OPERATOR — one strategy file per type — auto-registered
       __init__.py              #     registry + @gold_strategy + gold_merge(stage,type,table,keys,run_id)
       scd1.py  scd2.py  fact.py
@@ -265,6 +265,16 @@ delete-detection capability — which is **on by default for any keyed full/snap
 `WORKING_GUIDE.md` §4.2), not dropbox-specific. Bronze keeps every snapshot, so "present in batch
 *N*, gone in *N+1*" stays a plain query — deletes are **auditable**, not silent
 (see `docs/BRONZE_VS_MIRRORING.md` §3).
+
+**Original column names (`column_map`) & collisions.** Column names are sanitized to be Delta-safe
+(file headers lose `:` `-` spaces; silver snake-cases all), but the original header can be a *business
+value* you later **unpivot** into a row. The framework records the original in the global **`column_map`**
+table for every column whose landed name changed (only changed columns — stored via `record_column_map`).
+The **`file` connector** records file headers (incl. `:` `-`); the **silver worker** records `source →
+snake` renames for non-file sources; a gold `sq_*` notebook restores the true header on unpivot. If two
+headers reduce to the same physical name (`A2:2` + `A2-2` → `a2_2`), `naming.unique_names` de-duplicates
+deterministically (`a2_2`, `a2_2_2`) — so both columns survive (Delta rejects duplicates) and each
+original is recoverable. See `WORKING_GUIDE.md` §5.
 
 ---
 
