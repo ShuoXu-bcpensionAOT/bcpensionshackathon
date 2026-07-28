@@ -262,6 +262,81 @@ def organize_notebooks(t, wid):
     print(f"  organized {n} notebook(s) into notebook/utility/sourcequery")
 
 
+# ---- Hub-and-spoke: feature (spoke) workspaces ----------------------------------------------- #
+
+def _lakehouse_id(t, wid, name):
+    for i in requests.get(f"{API}/workspaces/{wid}/items", headers=H(t)).json().get("value", []):
+        if i["type"] == "Lakehouse" and i["displayName"] == name:
+            return i["id"]
+    return None
+
+
+def ensure_spoke_lakehouse(t, wid, name):
+    """A plain (non-schema) lakehouse in a spoke to hold shortcuts at Tables/<table>."""
+    lid = _lakehouse_id(t, wid, name)
+    if lid:
+        print(f"  lakehouse {name} exists")
+        return lid
+    for _ in range(12):                                 # a just-deleted name stays reserved (409)
+        r = requests.post(f"{API}/workspaces/{wid}/lakehouses", headers=H(t), json={"displayName": name})
+        if r.status_code in (200, 201, 202):
+            wait_lro(r, t)
+            print(f"  created lakehouse {name}")
+            return _lakehouse_id(t, wid, name)
+        if r.status_code == 409:
+            time.sleep(10)
+            continue
+        sys.exit(f"create spoke lakehouse {name} failed: {r.text}")
+
+
+def ensure_shortcut(t, wid, lh_id, name, hub_wid, hub_gold_id, src_path):
+    """Idempotent OneLake shortcut: spoke lakehouse Tables/<name> -> hub Gold/<src_path>. The target
+    is the ENV-LOCAL hub, so a UAT spoke references UAT data and never points cross-environment."""
+    ex = requests.get(f"{API}/workspaces/{wid}/items/{lh_id}/shortcuts", headers=H(t))
+    if ex.status_code == 200:
+        for s in ex.json().get("value", []):
+            if s.get("name") == name and s.get("path") == "Tables":
+                print(f"    shortcut {name} exists")
+                return
+    body = {"path": "Tables", "name": name,
+            "target": {"oneLake": {"workspaceId": hub_wid, "itemId": hub_gold_id, "path": src_path}}}
+    r = requests.post(f"{API}/workspaces/{wid}/items/{lh_id}/shortcuts", headers=H(t), json=body)
+    if r.status_code in (200, 201):
+        print(f"    + shortcut {name} -> hub/{src_path}")
+    elif r.status_code == 409:
+        print(f"    shortcut {name} exists")
+    else:
+        print(f"    WARN shortcut {name} [{r.status_code}] {r.text[:140]} "
+              f"(hub Gold table may not be loaded yet — re-run cp_spokes after a load)")
+
+
+def provision_spokes(t, base, env_name, hub_wid):
+    """Provision the manifest's feature (spoke) workspaces for THIS environment: each gets its own
+    workspace + lakehouse + env-local shortcuts to the hub Gold. Idempotent. No-op if the manifest
+    declares no feature_workspaces. Spoke content is the domain team's own Fabric CI/CD track."""
+    spokes = MF.FEATURE_WORKSPACES
+    if not spokes:
+        return
+    gold_name = MF.LAKEHOUSE_NAMES.get("gold", "LH_gold")
+    hub_gold_id = _lakehouse_id(t, hub_wid, gold_name)
+    if not hub_gold_id:
+        print(f"  WARN: hub Gold lakehouse '{gold_name}' not found — skipping spokes")
+        return
+    print(f"\n=== feature (spoke) workspaces: {len(spokes)} — env-local shortcuts to {gold_name} ===")
+    for sp in spokes:
+        sname = sp["name"]
+        ws_name = f"{base}-{sname}-{env_name}"
+        lh_name = sp.get("lakehouse") or ("LH_" + "".join(c for c in sname if c.isalnum()))
+        print(f"- spoke {ws_name}")
+        swid = ensure_workspace(t, ws_name)
+        ensure_sp_admin(t, swid)
+        lh_id = ensure_spoke_lakehouse(t, swid, lh_name)
+        for sc in sp.get("shortcuts", []):
+            schema, table = sc.split("/", 1) if "/" in sc else ("dbo", sc)
+            ensure_shortcut(t, swid, lh_id, table, hub_wid, hub_gold_id, f"Tables/{schema}/{table}")
+    print("=== spokes done ===")
+
+
 def step(envset, *args):
     e = dict(os.environ)
     e.update(envset)
@@ -302,6 +377,7 @@ def main():
     move_pipelines(t, wid)                             # -> 'pipeline' folder
     step(envset, "cp_config.py")                       # config-as-code -> config SQL DB
     wait_for_mirror(wid, sqldb_id, ["datasource", "gold_dependency"])
+    provision_spokes(t, base, env_name, wid)           # hub-and-spoke: feature workspaces (env-local)
     print(f"\nBOOTSTRAP COMPLETE (deploy-only): {name} ({wid})")
     print("Run the pipeline with: cp_pl_main (load_group, run_id, src_user, src_password)")
 

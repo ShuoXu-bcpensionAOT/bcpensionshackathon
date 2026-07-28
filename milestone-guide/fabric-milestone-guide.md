@@ -474,9 +474,11 @@ already have, not new infrastructure:
 - New spokes are added through the workspace-creation process (a config entry), keeping the set
   governed and consistent.
 
-> *This spoke-provisioning is a recommended enhancement to the current template — which today
-> provisions the hub. The workspace / lakehouse / role-assignment APIs are already in use, so it is
-> incremental work, not a rebuild.*
+> **Implemented.** Spoke provisioning is now part of the deployment template: a `feature_workspaces`
+> list in the manifest, provisioned idempotently by `cp_bootstrap` (or the standalone `cp_spokes.py`)
+> — each spoke's workspace + lakehouse + **env-local** shortcuts to that environment's hub Gold.
+> Validated on DEV: re-runs are idempotent, and every shortcut resolves to the DEV hub (never
+> cross-env) — the by-construction fix to the promotion leak shown above.
 
 > **How it maps to the milestones.** This topology realizes Milestone 1's *Define Workspace Structure*,
 > *Domain Alignment Strategy*, *Lakehouse Organization Standards*, and *Data Sharing Standards*; the

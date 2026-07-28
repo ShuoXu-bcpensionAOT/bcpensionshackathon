@@ -42,6 +42,18 @@ pipelines: [cp_pl_metadata, cp_pl_bronze, cp_pl_onprem, cp_pl_silver, cp_pl_gold
 superseded_notebooks: [cp_01_setup, cp_02_ingest_bronze, cp_03_build_silver,
                        cp_04_build_gold, cp_09_orchestrate]
 
+# OPTIONAL — hub-and-spoke topology. Feature (spoke) workspaces provisioned per environment by
+# cp_bootstrap / cp_spokes: each gets its own workspace (<base>-<name>-<env>) + a lakehouse
+# (LH_<name>) whose OneLake shortcuts point at THIS environment's hub Gold (env-local — a UAT spoke
+# references UAT data, never DEV/PROD). Idempotent. Spoke CONTENT (reports/models) is the domain
+# team's own Fabric Git + deployment-pipeline track, not managed here. Edit this list to your
+# business domains; remove it to disable. `shortcuts`: hub Gold tables (dbo unless "schema/table").
+feature_workspaces:
+  - name: Analytics                                       # example spoke — replace with real domains
+    shortcuts: [dim_customer, dim_product, fact_sales_order]
+  # - name: Pensions
+  #   shortcuts: [dim_customer, fact_sales_order]
+
 # OPTIONAL — opt-in driver Environment. Not needed for plug-and-play: SQL Server / Postgres /
 # MySQL JDBC jars are bundled, and the Oracle/DB2 connectors self-install their pure-Python
 # driver on demand. Uncomment to pre-install drivers (zero per-session pip) and/or add Oracle/DB2

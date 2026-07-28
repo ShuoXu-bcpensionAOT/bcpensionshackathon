@@ -29,6 +29,13 @@ SUPERSEDED_NOTEBOOKS = _M.get("superseded_notebooks", [])
 # When present, cp_bootstrap provisions+publishes a Fabric Environment (Oracle/DB2 drivers etc.).
 ENVIRONMENT = _M.get("environment")
 
+# Optional hub-and-spoke topology: feature (spoke) workspaces. Each spoke gets its own workspace +
+# lakehouse with ENV-LOCAL OneLake shortcuts to the hub Gold (no copy; a UAT spoke references UAT
+# data, never cross-env). Provisioned idempotently by cp_bootstrap / cp_spokes. Spoke CONTENT
+# (reports/semantic models) is the domain team's own Fabric CI/CD track — not managed here.
+# [{name, shortcuts: [gold_table | "schema/table"], lakehouse?}]
+FEATURE_WORKSPACES = _M.get("feature_workspaces", [])
+
 NB_FOLDERS = {}                                         # {folder: [names]}
 for _n in NOTEBOOKS:
     NB_FOLDERS.setdefault(_n["folder"], []).append(_n["name"])

@@ -469,7 +469,7 @@
       <tr><td class="k2">Repeat per env</td><td>Idempotent: <span class="mono">deploy DEV|UAT|PROD</span> brings up the hub <b>and</b> its full set of spokes in one command.</td></tr>
       <tr><td class="k2">Govern</td><td>New spokes are added through the workspace-creation process (a config entry) — the set stays governed and consistent.</td></tr>
     </tbody></table></div>
-    <div class="note">This spoke-provisioning is a <b>recommended enhancement</b> to the current template. The workspace / lakehouse / role-assignment APIs are already in use, so it's incremental work, not a rebuild.</div>
+    <div class="note" style="border-left-color:var(--fabric);background:color-mix(in srgb,var(--fabric) 9%,var(--panel))"><b>Implemented.</b> Spoke provisioning is now part of the deployment template — a <span class="mono">feature_workspaces</span> list in the manifest, provisioned idempotently by <span class="mono">cp_bootstrap</span> (or standalone <span class="mono">cp_spokes.py</span>): each spoke's workspace + lakehouse + <b>env-local</b> shortcuts to that environment's hub Gold. Validated on DEV — re-runs are idempotent and every shortcut resolves to the DEV hub (never cross-env), the by-construction fix to the promotion leak above.</div>
 
     <div class="note">This topology realizes Milestone 1's <i>Workspace Structure</i>, <i>Domain Alignment</i>, <i>Lakehouse Standards</i>, and <i>Data Sharing</i> items; the Milestone 3 semantic models and reports are what live in the spokes.</div>
 
