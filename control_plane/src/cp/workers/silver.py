@@ -11,7 +11,7 @@ from ..storage import delta_exists, read_path, write_path, files_put
 from ..config_db import config_query
 from ..cleanse import apply_cleansing
 from ..transform import row_hash, merge_upsert
-from ..audit import append_rows, log_object_run
+from ..audit import append_rows, log_object_run, record_column_map
 
 
 def _dq_condition(rule, colmap):
@@ -62,6 +62,12 @@ def silver(run_id="manual", object_json="{}", object=None, **kw):
         df = read_path(bp)
         ingest_ts = df["_bronze_ingest_ts"] if "_bronze_ingest_ts" in df.columns else F.current_timestamp()
         biz = [c for c in df.columns if not c.startswith("_")]
+        # Global column dictionary: for non-file sources, record source->landed (snake) renames so
+        # the original names are recoverable (only changed columns). File/dropbox objects are skipped
+        # here — the file connector already recorded their TRUE headers (incl. ':' '-'), which silver
+        # must not overwrite with the already-sanitized bronze name.
+        if str(o.get("connector") or o.get("source_type") or "").lower() != "file":
+            record_column_map(oid, schema, table, [(snake(c), c) for c in biz])
         sdf = df.select([F.col(c).alias(snake(c)) for c in biz] + [ingest_ts.alias("_bronze_ingest_ts")])
         if "rowguid" in sdf.columns:
             sdf = sdf.drop("rowguid")

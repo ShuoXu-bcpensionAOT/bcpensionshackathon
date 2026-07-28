@@ -50,13 +50,15 @@ def deploy(names):
     # lakehouse context. GUIDs from cp_vars.
     lakehouse_attach = set(MF.NB_FOLDERS.get("sourcequery", [])) | {"gold_runner"}
     gold_id, silver_id = C.LH.get("gold"), C.LH.get("silver")
+    config_id = C.LH.get("config")                      # LH_metadata — holds the global column_map
     for name in names:
         cells = source_cells(name)
         eid = env_id if name in attach else None
         if name in lakehouse_attach and gold_id and silver_id:
+            known = [i for i in (silver_id, gold_id, config_id) if i]
             ipynb = FN.build_ipynb(cells, default_lakehouse_id=gold_id,
                                    default_lakehouse_name=C.LAYER_NAMES["gold"],
-                                   known_lakehouse_ids=[silver_id, gold_id], environment_id=eid)
+                                   known_lakehouse_ids=known, environment_id=eid)
             tag = "  [lakehouse-attached]"
         else:
             ipynb = FN.build_ipynb(cells, environment_id=eid)

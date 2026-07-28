@@ -26,6 +26,11 @@ SCHEMAS = {
                          "message string, logged_at timestamp"),
     "dropbox_ledger": ("file_key string, content_hash string, schema_name string, "
                        "object_count int, status string, processed_at timestamp"),
+    # Global column dictionary: original (source/business) name for every landed column whose
+    # physical (silver) name was CHANGED by sanitization/snake — only changed columns are stored, so
+    # a later step (e.g. a gold unpivot) can restore the true business value, incl. ':' '-' headers.
+    "column_map": ("object_id string, landed_schema string, landed_table string, "
+                   "physical_col string, original_col string, updated_at timestamp"),
 }
 
 
@@ -109,3 +114,28 @@ def update_watermark(object_id, value):
         return
     append_rows("watermark_state", [{
         "object_id": object_id, "watermark_value": str(value), "updated_at": now_ts()}])
+
+
+def record_column_map(object_id, landed_schema, landed_table, pairs):
+    """Upsert the original name for every landed column whose physical name CHANGED, into the global
+    `column_map`. `pairs` = [(physical_col, original_col)]; rows where physical == original are skipped
+    (a column loaded as-is needs no entry, saving storage). Concurrency-safe (retry) — the dropbox
+    fires many objects at once. Keyed by (object_id, physical_col)."""
+    import time
+    from .transform import merge_upsert
+    rows = [{"object_id": object_id, "landed_schema": landed_schema, "landed_table": landed_table,
+             "physical_col": p, "original_col": o, "updated_at": now_ts()}
+            for p, o in pairs if p is not None and p != o]
+    if not rows:
+        return
+    cols = [c.strip().split()[0] for c in SCHEMAS["column_map"].split(",")]
+    df = spark.createDataFrame([[r.get(c) for c in cols] for r in rows], SCHEMAS["column_map"])
+    p = tpath("config", "column_map")
+    for attempt in range(4):
+        try:
+            merge_upsert(p, df, ["object_id", "physical_col"])
+            return
+        except Exception:
+            if attempt == 3:
+                raise
+            time.sleep(2 * (attempt + 1))

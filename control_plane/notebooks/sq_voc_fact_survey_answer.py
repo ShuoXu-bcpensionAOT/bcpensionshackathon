@@ -1,6 +1,7 @@
 # PARAMETERS
 run_id = "manual"
 silver_lh = "LH_silver"
+config_lh = "LH_metadata"
 
 # COMMAND ----------
 # Stage for voc_fact_survey_answer — the atomic grain: one answer per question, unpivoted from the
@@ -27,12 +28,23 @@ SURVEYS = [
               "online", "special_event"]},
 ]
 
+def _colmap(table):
+    """physical -> ORIGINAL business header (e.g. 'a2_2' -> 'A2:2'), from the global column_map.
+    Only CHANGED columns are stored, so unlisted columns keep their name."""
+    try:
+        rows = spark.sql(f"SELECT physical_col, original_col FROM `{config_lh}`.dbo.column_map "
+                         f"WHERE landed_table = '{table}'").collect()
+        return {r["physical_col"]: r["original_col"] for r in rows}
+    except Exception:
+        return {}
+
 long = None
 for s in SURVEYS:
     df = spark.sql(f"SELECT * FROM `{silver_lh}`.voc.`{s['t']}`")
     qcols = [c for c in df.columns if not c.startswith("_") and c not in s["meta"]]
     df = df.withColumn("_rk", F.sha2(F.concat_ws("|", F.lit(str(s["k"])), F.col(s["rid"]).cast("string")), 256))
-    pairs = ", ".join(f"'{c}', `{c}`" for c in qcols)
+    cm = _colmap(s["t"])                                   # restore ':' '-' business headers on unpivot
+    pairs = ", ".join(f"'{cm.get(c, c)}', `{c}`" for c in qcols)
     u = df.selectExpr(f"{s['k']} AS survey_key", "_rk AS response_key",
                       f"stack({len(qcols)}, {pairs}) AS (question_code, answer_text)").where("answer_text IS NOT NULL")
     long = u if long is None else long.unionByName(u)
