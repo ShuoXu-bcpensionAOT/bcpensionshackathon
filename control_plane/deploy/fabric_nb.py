@@ -185,9 +185,6 @@ try:
     import notebookutils; log("notebookutils_ok")
 except Exception as e: log("notebookutils_missing " + repr(e)[:200])
 try:
-    mssparkutils; log("mssparkutils_ok")
-except Exception as e: log("mssparkutils_missing " + repr(e)[:200])
-try:
     url = "jdbc:sqlserver://{host}:1433;database=AdventureWorks2025;encrypt=true;trustServerCertificate=true;loginTimeout=30"
     df = (spark.read.format("jdbc").option("url", url).option("dbtable", "Production.ProductCategory")
           .option("user", "{user}").option("password", "{pwd}")
