@@ -42,7 +42,7 @@ for name, mode, data, ex, fill, stroke in envs:
     for i, (ic, lab) in enumerate(iso):
         ix = ex + 16 + (EW - 32) * (0.13 + 0.245 * i)
         p.append(inline(ic, ix - 12, EY + 220, 24))
-        p.append(T(ix, EY + 256, lab, 9.5, "600", GREY))
+        p.append(T(ix, EY + 262, lab, 9.5, "600", GREY))
 
     # data posture
     dfill = "#FDECEC" if isprod else "#F4F7F4"
@@ -73,7 +73,8 @@ p.append(f'<line x1="210" y1="540" x2="1310" y2="540" stroke="#C0504D" stroke-wi
          f'stroke-dasharray="7 5"/>')
 p.append(f'<rect x="545" y="527" width="430" height="26" rx="6" fill="{WHITE}" '
          f'stroke="#C0504D" stroke-width="1.2"/>')
-p.append(T(760, 545, "Production data never flows back to DEV / UAT", 11.5, "700", "#A03A3A"))
+p.append(T(760, 545, "Production data never flows back to DEV / UAT", 11.5, "700", "#A03A3A",
+           extra=' data-layout-ok="LINE_TEXT"'))
 
 # ------------------------------------------------------------------ capacity
 p.append(box(24, 566, 1292, 40, "#F7F4FA", "#CBBEDA", rx=8, sw=1.4))

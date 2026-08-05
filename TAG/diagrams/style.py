@@ -20,14 +20,14 @@ GREEN     = "#0E7C5F"
 FONT = ('font-family="Arial, Helvetica, sans-serif"')
 
 
-def T(x, y, s, size=13, w="400", fill=GREY, anchor="middle", ls="0"):
+def T(x, y, s, size=13, w="400", fill=GREY, anchor="middle", ls="0", extra=""):
     """Text. `s` may contain \n for multi-line (rendered as tspans)."""
     lines = str(s).split("\n")
     if len(lines) == 1:
         return (f'<text x="{x}" y="{y}" font-size="{size}" font-weight="{w}" fill="{fill}" '
-                f'text-anchor="{anchor}" letter-spacing="{ls}">{esc(lines[0])}</text>')
+                f'text-anchor="{anchor}" letter-spacing="{ls}"{extra}>{esc(lines[0])}</text>')
     out = [f'<text x="{x}" y="{y}" font-size="{size}" font-weight="{w}" fill="{fill}" '
-           f'text-anchor="{anchor}" letter-spacing="{ls}">']
+           f'text-anchor="{anchor}" letter-spacing="{ls}"{extra}>']
     for i, ln in enumerate(lines):
         dy = 0 if i == 0 else size + 3
         out.append(f'<tspan x="{x}" dy="{dy}">{esc(ln)}</tspan>')
