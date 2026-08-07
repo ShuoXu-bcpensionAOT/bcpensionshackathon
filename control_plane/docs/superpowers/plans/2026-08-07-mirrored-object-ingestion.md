@@ -278,6 +278,18 @@ Add the import at the top of `src/cp/gold/scd2.py`:
 from ..transform import hash_columns, row_hash
 ```
 
+Then — and this is the part that makes ADR-0006 actually work — **recompute the stored side's
+hash over the same columns** rather than trusting the `_row_hash` already on the dimension. That
+stored value was computed over whatever columns were in force when the row was written; comparing
+it against a hash over the current intersection would report every row as changed the first time
+the projection moves, which is precisely the failure this ADR exists to prevent. Replace the
+`cur` line:
+
+```python
+    # re-hash the stored rows over `cols` so both sides are hashed over the SAME column set
+    cur = row_hash(tgt.toDF().where(F.col("_is_current")), cols)
+```
+
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_pure.py -k effective_start -v`
@@ -1140,7 +1152,12 @@ def history(run_id="manual", object_json="{}", object=None, **kw):
         hs, ht = history_table(schema, table)
         hp = tpath("silver", ht, hs)
         incoming = read_path(sp)
-        stamp = F.current_timestamp()
+        # A concrete instant, not F.current_timestamp(). That is a lazy expression evaluated per
+        # query, so the merge that closes a version and the append that opens the next one would
+        # each evaluate it separately — leaving _valid_to and _valid_from disagreeing, and a
+        # point-in-time query on that instant returning nothing or two rows.
+        run_ts = now_ts()
+        stamp = F.lit(run_ts).cast("timestamp")
         # The change is bounded to (previous successful run, now]. That lower bound is a run-level
         # fact, so it is read once here rather than carried per row (ADR-0007).
         prev = get_watermark(HISTORY_WM.format(oid=oid))
@@ -1169,8 +1186,17 @@ def history(run_id="manual", object_json="{}", object=None, **kw):
         cur = hist.where(F.col("_is_current"))
         cols = hash_columns(cur.columns, incoming.columns)
         inc = row_hash(incoming, cols).withColumnRenamed("_row_hash", "_inc_hash")
-        joined = inc.join(cur.select(*keys, F.col("_row_hash").alias("_cur_hash")), keys, "left")
+        # Re-hash the stored versions over the SAME `cols` rather than trusting their stored
+        # _row_hash, which was computed over whatever columns existed when they were written.
+        # Comparing across two different column sets would report every record as changed the
+        # first time the schema moves — the exact failure ADR-0006 prevents.
+        stored = row_hash(cur, cols).select(*keys, F.col("_row_hash").alias("_cur_hash"))
+        joined = inc.join(stored, keys, "left")
         changed = joined.where(F.col("_cur_hash").isNull() | (F.col("_inc_hash") != F.col("_cur_hash")))
+        # Materialise before the merge. `changed` derives from the same delta path the merge is
+        # about to mutate; left lazy, Spark would recompute it afterwards against the post-merge
+        # state. count() alone forces one action but does not retain the result.
+        changed = changed.persist()
         n_changed = changed.count()
         if n_changed:
             ck = changed.select(*keys).distinct()
@@ -1189,6 +1215,7 @@ def history(run_id="manual", object_json="{}", object=None, **kw):
                    .withColumn("_hash_columns", F.lit(",".join(cols)))
                    .withColumn("_history_run_id", F.lit(run_id)))
             write_path(new, hp, mode="append")
+        changed.unpersist()
 
         # Reconcile: every key in silver must have a current, quality-passing history version and
         # vice versa. Both sides were read from the same pinned state, so this asserts rather than
